@@ -67,6 +67,5 @@ The following are blocked or require explicit review:
 
 ## Reporting a vulnerability
 
-Use the private security advisory channel described in [SECURITY.md](../SECURITY.md).
-Do not attach customer firmware, crash inputs, or proprietary logs to a public
-issue.
+Use the project's private maintainer security channel. Do not attach customer
+firmware, crash inputs, or proprietary logs to a public issue.

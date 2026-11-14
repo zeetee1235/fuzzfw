@@ -22,7 +22,7 @@ include exploit details.
 
 Pre-alpha releases are supported on a best-effort basis. A version is
 security-supported while it is the latest tagged release or explicitly listed in
-release notes. Older releases may receive fixes at maintainer discretion.
+release notes.
 
 ## Security model
 
@@ -31,7 +31,7 @@ points:
 
 - Target code and `host.build_command` are untrusted native code. fuzzfw does
   not sandbox them.
-- CI must use ephemeral/least-privilege runners for untrusted PRs.
+- Automated runners must use ephemeral/least-privilege environments for untrusted code.
 - No telemetry or automatic upload exists; artifacts can still contain secrets.
 - Host ASan findings are `HOST_ONLY`, not automatic MCU vulnerability proof.
 - The generated harness does not catch target signals or sanitizer reports.
@@ -40,5 +40,3 @@ points:
 
 - Dependencies are pinned in `go.mod`/`go.sum`.
 - `make lint`, `make test`, and `make test-integration` are the minimum gates.
-- Releases include an SBOM and checksums; see
-  [docs/compliance/release-checklist.md](docs/compliance/release-checklist.md).

@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: Security report
-    url: https://github.com/fuzzfw/fuzzfw/security/advisories/new
-    about: Report vulnerabilities privately; do not attach customer firmware or crash inputs.
-  - name: Documentation
-    url: https://github.com/fuzzfw/fuzzfw/tree/main/docs
-    about: Architecture, configuration, CLI, compatibility, and compliance.

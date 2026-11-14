@@ -3,7 +3,6 @@
 | Example | Purpose |
 |---|---|
 | `simple-parser` | C11 parser with a clean function and an intentional heap-overflow fixture; demonstrates analyze → build → corpus finding → replay. |
-| `hal-uart` placeholder | Add a real customer-style adapter example here once a public HAL contract is reviewed. |
 
 The fixtures under `tests/fixtures/` are the deterministic test matrix:
 
@@ -17,5 +16,5 @@ The fixtures under `tests/fixtures/` are the deterministic test matrix:
 cd examples/simple-parser
 cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake --build build
-../../../fuzzfw check --engine replay --time 1s --output fuzzfw-out
+../../fuzzfw check --engine replay --time 1s --output fuzzfw-out
 ```
