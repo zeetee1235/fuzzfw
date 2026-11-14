@@ -156,6 +156,55 @@ type TargetPlan struct {
 	Function       *analyzer.Function `json:"-"`
 }
 
+// MarshalJSON keeps collection contracts as arrays rather than null.
+func (t TargetPlan) MarshalJSON() ([]byte, error) {
+	type alias TargetPlan
+	copy := alias(t)
+	if copy.Roles == nil {
+		copy.Roles = []RoleBinding{}
+	}
+	if copy.Constraints == nil {
+		copy.Constraints = []Constraint{}
+	}
+	if copy.Adapters == nil {
+		copy.Adapters = []AdapterBinding{}
+	}
+	if copy.Dependencies == nil {
+		copy.Dependencies = []string{}
+	}
+	if copy.DirectCallees == nil {
+		copy.DirectCallees = []analyzer.CallRef{}
+	}
+	if copy.Reasons == nil {
+		copy.Reasons = []string{}
+	}
+	if copy.Diagnostics == nil {
+		copy.Diagnostics = []diag.Diagnostic{}
+	}
+	if copy.Seeds == nil {
+		copy.Seeds = []string{}
+	}
+	if copy.Context.Setup == nil {
+		copy.Context.Setup = []string{}
+	}
+	if copy.Context.Teardown == nil {
+		copy.Context.Teardown = []string{}
+	}
+	if copy.Context.Provenance == nil {
+		copy.Context.Provenance = []string{}
+	}
+	if copy.Context.Unknowns == nil {
+		copy.Context.Unknowns = []string{}
+	}
+	if copy.Platform.Adapters == nil {
+		copy.Platform.Adapters = []string{}
+	}
+	if copy.Platform.ABIGuards == nil {
+		copy.Platform.ABIGuards = []string{}
+	}
+	return json.Marshal(copy)
+}
+
 // Sort makes plan artifacts deterministic.
 func (p *Plan) Sort() {
 	sort.Slice(p.Targets, func(i, j int) bool { return p.Targets[i].Name < p.Targets[j].Name })

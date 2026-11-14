@@ -6,6 +6,7 @@
 package harness
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -120,6 +121,28 @@ func defaultValidations() []string {
 		"g4_target_reach", "g5_input_use", "g6_context_validity",
 		"g7_stability", "g8_crash_reproduce",
 	}
+}
+
+// MarshalJSON keeps collection contracts as arrays rather than null.
+func (p Plan) MarshalJSON() ([]byte, error) {
+	type alias Plan
+	copy := alias(p)
+	if copy.RoleBindings == nil {
+		copy.RoleBindings = []planner.RoleBinding{}
+	}
+	if copy.Constraints == nil {
+		copy.Constraints = []planner.Constraint{}
+	}
+	if copy.Validations == nil {
+		copy.Validations = []string{}
+	}
+	if copy.Provenance == nil {
+		copy.Provenance = []string{}
+	}
+	if copy.Diagnostics == nil {
+		copy.Diagnostics = []diag.Diagnostic{}
+	}
+	return json.Marshal(copy)
 }
 
 // Finalize sorts and computes the stable harness ID.

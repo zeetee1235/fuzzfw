@@ -168,6 +168,40 @@ type IRArgument struct {
 	MayEscape   bool     `json:"may_escape"`
 }
 
+// MarshalJSON keeps the required parameter collection non-null.
+func (f Function) MarshalJSON() ([]byte, error) {
+	type alias Function
+	copy := alias(f)
+	if copy.Params == nil {
+		copy.Params = []Param{}
+	}
+	if copy.DirectCallees == nil {
+		copy.DirectCallees = []CallRef{}
+	}
+	if copy.UnresolvedCalls == nil {
+		copy.UnresolvedCalls = []string{}
+	}
+	if copy.IndirectCalls == nil {
+		copy.IndirectCalls = []string{}
+	}
+	if copy.GlobalReads == nil {
+		copy.GlobalReads = []string{}
+	}
+	if copy.GlobalWrites == nil {
+		copy.GlobalWrites = []string{}
+	}
+	if copy.HardwareFlags == nil {
+		copy.HardwareFlags = []string{}
+	}
+	if copy.Reasons == nil {
+		copy.Reasons = []string{}
+	}
+	if copy.Evidence == nil {
+		copy.Evidence = []Evidence{}
+	}
+	return json.Marshal(copy)
+}
+
 // ToJSON serializes the analysis deterministically.
 func (a *Analysis) ToJSON() ([]byte, error) {
 	return fsutil.CanonicalJSON(a)
