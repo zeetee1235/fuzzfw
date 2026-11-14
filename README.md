@@ -213,7 +213,9 @@ and [compliance guidance](docs/compliance/licensing.md).
 `fuzzfw` is a working product name. No trademark registration is claimed.
 Copyright currently belongs to the fuzzfw contributors; update `NOTICE`,
 `AUTHORS.md`, and the copyright holder before a company software registration or
-commercial release.
+commercial release. The Go module path `github.com/fuzzfw/fuzzfw` is a
+placeholder; change it (and imports) before publishing under a different
+company namespace.
 
 ## Documentation
 

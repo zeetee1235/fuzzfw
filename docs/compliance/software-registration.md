@@ -31,15 +31,18 @@ official guidance.
 
 1. Choose the legal copyright holder (individual or company) and confirm
    assignment/employment ownership for all contributors.
-2. Decide whether the release is published or unpublished for registration
+2. Confirm the Go module path and package metadata match the final company
+   namespace. The repository default `github.com/fuzzfw/fuzzfw` is a
+   placeholder.
+3. Decide whether the release is published or unpublished for registration
    purposes.
-3. Freeze a clean release tag and create a source archive.
-4. Run `make dist` and `make sbom`; record SHA-256 checksums.
-5. Confirm that no customer firmware, adapter, crash input, or secret is in the
+4. Freeze a clean release tag and create a source archive.
+5. Run `make dist` and `make sbom`; record SHA-256 checksums.
+6. Confirm that no customer firmware, adapter, crash input, or secret is in the
    public source archive.
-6. Prepare the program summary and identify the claimed version.
-7. Have counsel review contributor, license, and ownership records.
-8. Store the registration receipt and deposited source hash in the company
+7. Prepare the program summary and identify the claimed version.
+8. Have counsel review contributor, license, and ownership records.
+9. Store the registration receipt and deposited source hash in the company
    records.
 
 ## What not to claim
