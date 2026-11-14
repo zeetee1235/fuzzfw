@@ -1,0 +1,21 @@
+schema_version = 1
+
+[project]
+name = "c-clean-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "parse_header"
+symbol = "parse_header"
+source = "src/parser.c"
+header = "include/parser.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 64
+seeds = ["seeds"]

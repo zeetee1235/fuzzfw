@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/lock.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw lock.json",
+  "type": "object",
+  "required": ["schema_version", "created_at", "analysis_sha256", "build_manifest_sha256", "plan_id", "targets"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "created_at": {"type": "string"},
+    "config_fingerprint": {"type": "string"},
+    "analysis_sha256": {"type": "string"},
+    "build_manifest_sha256": {"type": "string"},
+    "plan_id": {"type": "string"},
+    "toolchain_hash": {"type": "string"},
+    "targets": {"type": "array"}
+  }
+}

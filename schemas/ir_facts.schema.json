@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/ir_facts.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw ir_facts.json",
+  "type": "object",
+  "required": ["schema_version", "facts"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generator": {"type": "string"},
+    "target_triple": {"type": "string"},
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema_version", "link_symbol", "ir_mapping"],
+        "properties": {
+          "schema_version": {"const": 1},
+          "function_id": {"type": "string"},
+          "link_symbol": {"type": "string"},
+          "target_triple": {"type": "string"},
+          "host_triple": {"type": "string"},
+          "ir_mapping": {"enum": ["resolved", "ambiguous", "unresolved", "unavailable"]},
+          "arguments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["index", "may_escape"],
+              "properties": {
+                "index": {"type": "integer", "minimum": 0},
+                "observed_use": {"type": "array", "items": {"type": "string"}},
+                "may_escape": {"type": "boolean"}
+              }
+            }
+          },
+          "global_effects": {"type": "array", "items": {"type": "string"}},
+          "hardware_flags": {"type": "array", "items": {"type": "string"}},
+          "unknowns": {"type": "array", "items": {"type": "string"}},
+          "evidence": {"type": "array"},
+          "branch_count": {"type": "integer", "minimum": 0},
+          "load_count": {"type": "integer", "minimum": 0},
+          "store_count": {"type": "integer", "minimum": 0},
+          "indirect_calls": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  }
+}

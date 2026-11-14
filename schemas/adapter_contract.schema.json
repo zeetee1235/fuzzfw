@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/adapter_contract.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw adapter contract",
+  "type": "object",
+  "required": ["schema_version", "original_symbol", "prototype", "model", "effects", "valid_context"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "original_symbol": {"type": "string", "minLength": 1},
+    "prototype": {"type": "string", "minLength": 1},
+    "model": {
+      "enum": ["input_source", "status_and_output", "status_only", "clock", "random", "io", "passthrough", "unknown"]
+    },
+    "effects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"enum": ["write_buffer", "read_buffer", "return_status", "set_state", "read_config", "wait", "none"]}
+    },
+    "max_write": {"type": "string"},
+    "valid_context": {"type": "string", "minLength": 1},
+    "nondeterminism": {"enum": ["none", "time", "random", "io", "unknown"]},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

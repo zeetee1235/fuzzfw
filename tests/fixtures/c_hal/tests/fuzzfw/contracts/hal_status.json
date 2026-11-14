@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "original_symbol": "HAL_GetStatus",
+  "prototype": "int(void)",
+  "model": "status_only",
+  "effects": ["return_status"],
+  "valid_context": "fixture host test context; no hardware is present",
+  "nondeterminism": "none",
+  "limitations": ["does not model real sensor state", "does not model interrupt timing"]
+}

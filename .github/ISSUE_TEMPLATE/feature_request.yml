@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a capability while preserving fail-closed behavior
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What embedded/fuzzing workflow is blocked today?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and safety
+      description: What evidence would classify a target ready/adaptable/blocked? What must fail closed?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Wrapper, adapter, external tool, or explicit non-goal?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - build import
+        - AST analysis
+        - LLVM IR analysis
+        - planner/roles
+        - harness generation
+        - host build
+        - engine adapter
+        - triage/CI
+        - docs/compliance
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: This does not require automatic HAL success stubs or source rewriting.
+          required: true
+        - label: I considered how the change fails closed.
+          required: true

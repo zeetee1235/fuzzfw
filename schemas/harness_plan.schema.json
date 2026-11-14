@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/harness_plan.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw harness_plan.json",
+  "type": "object",
+  "required": ["schema_version", "generator", "target", "role_bindings", "constraints", "context", "platform", "analysis", "validations", "provenance"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "harness_id": {"type": "string"},
+    "generator": {"type": "string"},
+    "target": {
+      "type": "object",
+      "required": ["name", "language", "entry_kind", "link_symbol"],
+      "properties": {
+        "name": {"type": "string"},
+        "function_id": {"type": "string"},
+        "language": {"type": "string"},
+        "entry_kind": {"enum": ["direct_buffer_api", "manual_wrapper"]},
+        "link_symbol": {"type": "string"},
+        "call_symbol": {"type": "string"},
+        "source_header": {"type": "string"},
+        "build_variant": {"type": "string"},
+        "source": {"type": "string"}
+      }
+    },
+    "role_bindings": {"type": "array"},
+    "constraints": {"type": "array"},
+    "context": {"type": "object"},
+    "platform": {"type": "object"},
+    "analysis": {"type": "object"},
+    "validations": {"type": "array", "items": {"type": "string"}},
+    "provenance": {"type": "array", "items": {"type": "string"}},
+    "diagnostics": {"type": "array"}
+  }
+}

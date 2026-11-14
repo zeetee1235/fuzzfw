@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/analysis.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw analysis.json",
+  "type": "object",
+  "required": ["schema_version", "analysis_mode", "generator", "project", "variants", "functions"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "analysis_mode": {"enum": ["NATIVE_AST", "NATIVE_AST_WITH_FALLBACK", "AST_JSON_FALLBACK", "AST_ONLY"]},
+    "generator": {"type": "string"},
+    "project": {
+      "type": "object",
+      "required": ["name", "root", "source_revision", "config_fingerprint"],
+      "properties": {
+        "name": {"type": "string"},
+        "root": {"type": "string"},
+        "source_revision": {"type": "string"},
+        "config_fingerprint": {"type": "string"}
+      }
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "file", "language", "compiler", "analysis_status", "ir_status"],
+        "properties": {
+          "id": {"type": "string"},
+          "file": {"type": "string"},
+          "language": {"type": "string"},
+          "compiler": {"type": "string"},
+          "compiler_used": {"type": "string"},
+          "target_triple": {"type": "string"},
+          "host_triple": {"type": "string"},
+          "arguments": {"type": "array", "items": {"type": "string"}},
+          "include_dirs": {"type": "array", "items": {"type": "string"}},
+          "defines": {"type": "array", "items": {"type": "string"}},
+          "standard": {"type": "string"},
+          "analysis_status": {"type": "string"},
+          "ir_status": {"type": "string"},
+          "diagnostics": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "functions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "language", "name", "qualified_name", "signature", "return_type", "source", "variant_id", "params"],
+        "properties": {
+          "id": {"type": "string"},
+          "language": {"type": "string"},
+          "name": {"type": "string"},
+          "qualified_name": {"type": "string"},
+          "mangled_name": {"type": "string"},
+          "usr": {"type": "string"},
+          "signature": {"type": "string"},
+          "return_type": {"type": "string"},
+          "source": {"type": "string"},
+          "header": {"type": "string"},
+          "line": {"type": "integer", "minimum": 0},
+          "column": {"type": "integer", "minimum": 0},
+          "variant_id": {"type": "string"},
+          "translation_unit": {"type": "string"},
+          "definition": {"type": "boolean"},
+          "internal_linkage": {"type": "boolean"},
+          "is_method": {"type": "boolean"},
+          "is_static_method": {"type": "boolean"},
+          "variadic": {"type": "boolean"},
+          "params": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["index", "type", "canonical_type", "is_const", "is_pointer", "is_integer", "is_signed", "is_volatile", "is_void_pointer"],
+              "properties": {
+                "index": {"type": "integer", "minimum": 0},
+                "name": {"type": "string"},
+                "type": {"type": "string"},
+                "canonical_type": {"type": "string"},
+                "is_const": {"type": "boolean"},
+                "is_pointer": {"type": "boolean"},
+                "is_integer": {"type": "boolean"},
+                "is_signed": {"type": "boolean"},
+                "is_volatile": {"type": "boolean"},
+                "is_void_pointer": {"type": "boolean"},
+                "bits": {"type": "integer", "minimum": 0},
+                "evidence": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          },
+          "direct_callees": {"type": "array"},
+          "unresolved_calls": {"type": "array", "items": {"type": "string"}},
+          "indirect_calls": {"type": "array", "items": {"type": "string"}},
+          "global_reads": {"type": "array", "items": {"type": "string"}},
+          "global_writes": {"type": "array", "items": {"type": "string"}},
+          "hardware_flags": {"type": "array", "items": {"type": "string"}},
+          "reasons": {"type": "array", "items": {"type": "string"}},
+          "evidence": {"type": "array"}
+        }
+      }
+    },
+    "external_declarations": {"type": "array"},
+    "ir_facts": {"type": "array"},
+    "diagnostics": {"type": "array"}
+  }
+}

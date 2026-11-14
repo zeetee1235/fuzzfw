@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use fuzzfw in research or a product, cite this repository and record the exact version/tag."
+title: "fuzzfw: deterministic source-level selective host-lifting for embedded C/C++ fuzzing"
+abstract: "A local and CI-oriented tool that analyzes embedded C/C++ build metadata, preserves original translation units, replaces only approved hardware boundaries, verifies target reachability and input use, and reproduces findings for CI."
+type: software
+license: Apache-2.0
+repository-code: "https://github.com/fuzzfw/fuzzfw"
+authors:
+  - name: "fuzzfw contributors"
+version: "0.1.0-dev"
+date-released: "2026-11-15"
+keywords:
+  - fuzzing
+  - embedded
+  - firmware
+  - clang
+  - llvm
+  - host-lifting

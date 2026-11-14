@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/baseline.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw baseline",
+  "type": "object",
+  "required": ["schema_version", "findings"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fingerprint"],
+        "properties": {
+          "fingerprint": {"type": "string"},
+          "id": {"type": "string"},
+          "target": {"type": "string"},
+          "kind": {"type": "string"},
+          "origin": {"type": "string"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/build_manifest.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw build_manifest.json",
+  "type": "object",
+  "required": ["schema_version", "created_at", "project", "compdb", "commands", "input_hashes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "created_at": {"type": "string"},
+    "project": {
+      "type": "object",
+      "required": ["name", "root", "source_revision", "config_sha256", "config_fingerprint"],
+      "properties": {
+        "name": {"type": "string"},
+        "root": {"type": "string"},
+        "source_revision": {"type": "string"},
+        "config_path": {"type": "string"},
+        "config_sha256": {"type": "string"},
+        "config_fingerprint": {"type": "string"}
+      }
+    },
+    "compdb": {
+      "type": "object",
+      "required": ["path", "sha256", "entries"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string"},
+        "entries": {"type": "integer", "minimum": 0}
+      }
+    },
+    "toolchain": {"type": "object"},
+    "commands": {"type": "array"},
+    "input_hashes": {"type": "object", "additionalProperties": {"type": "string"}},
+    "git": {"type": "object"},
+    "diagnostics": {"type": "array"}
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/plan.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw plan.json",
+  "type": "object",
+  "required": ["schema_version", "generator", "project", "config_fingerprint", "analysis_sha256", "targets"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "plan_id": {"type": "string"},
+    "generator": {"type": "string"},
+    "project": {"type": "object"},
+    "config_fingerprint": {"type": "string"},
+    "analysis_sha256": {"type": "string"},
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "symbol", "classification", "status", "required", "input_model", "role_bindings", "constraints", "context", "platform", "analysis", "max_input_bytes"],
+        "properties": {
+          "name": {"type": "string"},
+          "symbol": {"type": "string"},
+          "function_id": {"type": "string"},
+          "qualified_name": {"type": "string"},
+          "signature": {"type": "string"},
+          "mangled_name": {"type": "string"},
+          "source": {"type": "string"},
+          "header": {"type": "string"},
+          "language": {"type": "string"},
+          "variant_id": {"type": "string"},
+          "classification": {"enum": ["ready_candidate", "adaptable", "blocked", "fuzzable", "not_fuzzable"]},
+          "status": {"type": "string"},
+          "required": {"type": "boolean"},
+          "input_model": {
+            "type": "object",
+            "required": ["kind", "buffer_arg", "length_arg"],
+            "properties": {
+              "kind": {"type": "string"},
+              "buffer_arg": {"type": "integer"},
+              "length_arg": {"type": "integer"},
+              "capacity_arg": {"type": "integer"}
+            }
+          },
+          "role_bindings": {"type": "array"},
+          "constraints": {"type": "array"},
+          "context": {"type": "object"},
+          "platform": {"type": "object"},
+          "analysis": {"type": "object"},
+          "adapters": {"type": "array"},
+          "required_translation_units": {"type": "array", "items": {"type": "string"}},
+          "reasons": {"type": "array", "items": {"type": "string"}},
+          "diagnostics": {"type": "array"},
+          "max_input_bytes": {"type": "integer", "minimum": 1},
+          "seeds": {"type": "array", "items": {"type": "string"}},
+          "wrapper": {"type": "object"}
+        }
+      }
+    },
+    "diagnostics": {"type": "array"}
+  }
+}

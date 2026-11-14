@@ -1,0 +1,27 @@
+schema_version = 1
+
+[project]
+name = "c-parser-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[host]
+triple = "x86_64-unknown-linux-gnu"
+clang = "clang"
+clangxx = "clang++"
+
+[[targets]]
+name = "parse_packet"
+symbol = "parse_packet"
+source = "src/parser.c"
+header = "include/parser.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 256
+seeds = ["seeds"]
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+corpus_dir = "corpus"

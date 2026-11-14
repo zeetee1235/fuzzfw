@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/finding.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw finding.json",
+  "type": "object",
+  "required": ["schema_version", "id", "fingerprint", "target", "kind", "origin", "reproduction", "input_sha256", "input_path", "scope_note"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"type": "string"},
+    "fingerprint": {"type": "string"},
+    "target": {"type": "string"},
+    "kind": {"type": "string"},
+    "origin": {"enum": ["target_crash", "adapter_failure", "harness_failure", "timeout", "unknown"]},
+    "reproduction": {
+      "type": "object",
+      "required": ["level", "success", "attempts", "flaky", "non_reproducing"],
+      "properties": {
+        "level": {"enum": ["R0_OBSERVED", "R1_HOST_REPRODUCED", "R2_ENTRY_REPRODUCED", "R3_DEVICE_CONFIRMED"]},
+        "success": {"type": "integer", "minimum": 0},
+        "attempts": {"type": "integer", "minimum": 0},
+        "flaky": {"type": "boolean"},
+        "non_reproducing": {"type": "boolean"}
+      }
+    },
+    "source": {"type": "object"},
+    "build_manifest_sha256": {"type": "string"},
+    "adapter_manifest_sha256": {"type": "string"},
+    "input_sha256": {"type": "string"},
+    "input_path": {"type": "string"},
+    "log_path": {"type": "string"},
+    "scope_note": {"type": "string"}
+  }
+}

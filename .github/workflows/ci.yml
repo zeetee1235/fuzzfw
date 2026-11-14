@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go tests and fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build
+      - name: Lint
+        run: make lint
+      - name: Unit tests
+        run: go test ./...
+      - name: Integration tests (fallback analyzers)
+        run: go test -tags=integration ./tests/integration/...
+      - name: Build CLI
+        run: make build
+      - name: Doctor
+        run: ./fuzzfw doctor --json
+      - name: SBOM
+        run: make sbom
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fuzzfw-sbom
+          path: dist/*.cdx.json
+
+  native-analyzers:
+    name: Native Clang/LLVM analyzers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM dev tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm-dev libclang-dev libclang-cpp18-dev cmake ninja-build
+      - name: Build analyzers
+        run: |
+          LLVM_PREFIX="$(llvm-config --prefix)"
+          cmake -S analyzer -B analyzer/build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_INCLUDE_DIR="$LLVM_PREFIX/include" \
+            -DCLANG_INCLUDE_DIR="$LLVM_PREFIX/include" \
+            -DCLANG_CPP_LIBRARY="$LLVM_PREFIX/lib/libclang-cpp.so" \
+            -DLLVM_LIBRARY="$LLVM_PREFIX/lib/libLLVM.so" \
+            -DFUZZFW_FORCE_SHARED_CLANG=ON
+          cmake --build analyzer/build
+      - name: Analyzer smoke test
+        run: |
+          ./analyzer/build/fuzzfw-analyze --version
+          ./analyzer/build/fuzzfw-ir-analyze --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fuzzfw-native-analyzers
+          path: |
+            analyzer/build/fuzzfw-analyze
+            analyzer/build/fuzzfw-ir-analyze

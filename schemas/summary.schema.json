@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fuzzfw.dev/schemas/summary.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "fuzzfw summary.json",
+  "type": "object",
+  "required": ["schema_version", "tool", "command", "started_at", "finished_at", "status", "exit_code", "reason", "project", "metrics", "targets", "findings", "artifacts"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "tool": {"type": "object"},
+    "command": {"type": "string"},
+    "started_at": {"type": "string"},
+    "finished_at": {"type": "string"},
+    "duration_seconds": {"type": "number", "minimum": 0},
+    "status": {"enum": ["pass", "fail", "incomplete"]},
+    "exit_code": {"enum": [0, 1, 2, 3]},
+    "reason": {"type": "string"},
+    "project": {"type": "object"},
+    "config_fingerprint": {"type": "string"},
+    "metrics": {
+      "type": "object",
+      "required": ["targets_total", "targets_required", "targets_built", "targets_selftest_passed", "targets_executed", "targets_blocked", "cases_replayed", "cases_fuzzed", "new_findings_reproduced", "flaky_findings", "harness_failures"],
+      "properties": {
+        "targets_total": {"type": "integer", "minimum": 0},
+        "targets_required": {"type": "integer", "minimum": 0},
+        "targets_built": {"type": "integer", "minimum": 0},
+        "targets_selftest_passed": {"type": "integer", "minimum": 0},
+        "targets_executed": {"type": "integer", "minimum": 0},
+        "targets_blocked": {"type": "integer", "minimum": 0},
+        "cases_replayed": {"type": "integer", "minimum": 0},
+        "cases_fuzzed": {"type": "integer", "minimum": 0},
+        "new_findings_reproduced": {"type": "integer", "minimum": 0},
+        "flaky_findings": {"type": "integer", "minimum": 0},
+        "harness_failures": {"type": "integer", "minimum": 0},
+        "analysis_seconds": {"type": "number", "minimum": 0},
+        "build_seconds": {"type": "number", "minimum": 0},
+        "selftest_seconds": {"type": "number", "minimum": 0},
+        "fuzz_seconds": {"type": "number", "minimum": 0},
+        "triage_seconds": {"type": "number", "minimum": 0}
+      }
+    },
+    "targets": {"type": "array"},
+    "findings": {"type": "array"},
+    "diagnostics": {"type": "array"},
+    "artifacts": {"type": "object"}
+  }
+}

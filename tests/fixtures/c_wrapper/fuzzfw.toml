@@ -1,0 +1,20 @@
+schema_version = 1
+
+[project]
+name = "c-wrapper-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "app_process_wrapper"
+symbol = "app_process"
+source = "src/app.c"
+required = true
+wrapper_symbol = "fuzzfw_target"
+wrapper_source = "tests/fuzzfw/wrappers/app_wrapper.c"
+seeds = ["seeds"]
