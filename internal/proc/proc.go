@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/fuzzfw/fuzzfw/internal/logx"
 )
 
 // TimeoutExitCode is used when a command is terminated by the runner.
@@ -86,6 +88,7 @@ func (r Runner) Run(ctx context.Context, dir string, argv ...string) (*Result, e
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	logx.Debugf("exec %s (cwd=%s)", Display(argv), dir)
 	started := time.Now()
 	err := cmd.Run()
 	duration := time.Since(started)
@@ -109,6 +112,7 @@ func (r Runner) Run(ctx context.Context, dir string, argv ...string) (*Result, e
 		result.TimedOut = true
 		result.ExitCode = TimeoutExitCode
 	}
+	logx.Debugf("exit=%d signal=%d timeout=%t duration=%s", result.ExitCode, result.Signal, result.TimedOut, result.Duration)
 	var exitErr *exec.ExitError
 	if err != nil && !errors.As(err, &exitErr) {
 		if ctx.Err() != nil {

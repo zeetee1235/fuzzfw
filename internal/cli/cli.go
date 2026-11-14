@@ -17,6 +17,7 @@ import (
 	"github.com/fuzzfw/fuzzfw/internal/diag"
 	"github.com/fuzzfw/fuzzfw/internal/exitcode"
 	"github.com/fuzzfw/fuzzfw/internal/fsutil"
+	"github.com/fuzzfw/fuzzfw/internal/logx"
 	"github.com/fuzzfw/fuzzfw/internal/version"
 )
 
@@ -71,11 +72,8 @@ func Run(args []string) (code int) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return exitcode.Usage
 	}
-	if global.verbose > 0 {
-		_ = os.Setenv("FUZZFW_VERBOSE", "1")
-	}
-	if global.quiet {
-		_ = os.Setenv("FUZZFW_QUIET", "1")
+	if err := logx.Configure(global.verbose, global.quiet, global.logFile); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: cannot configure log file: %v\n", err)
 	}
 	if len(remaining) == 0 {
 		fmt.Fprint(os.Stdout, usageText)

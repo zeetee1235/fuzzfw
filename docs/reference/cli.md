@@ -9,7 +9,7 @@ through a shell.
 |---|---|
 | `--config PATH` | Configuration file. Default: discover `fuzzfw.toml` upward. |
 | `--verbose`, `-v` | Increase log verbosity. Repeat for debug. |
-| `--quiet`, `-q` | Suppress non-error human logs. |
+| `--quiet`, `-q` | Suppress debug/progress logs; the final command summary remains. |
 | `--log-file PATH` | Also write debug logs to a file. |
 | `--version` | Print version and exit 0. |
 | `--help`, `-h` | Show help. |
