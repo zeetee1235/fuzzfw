@@ -58,7 +58,9 @@ behavior.
 
 ## P1 — precision
 
-- Interprocedural input taint (caller/callee argument mapping).
+- Interprocedural input taint (caller/callee argument mapping) — complete in the
+  deterministic local-call form. Expressions that do not map directly to a
+  parameter stay unknown.
 - Return/output invariant oracle.
 - Protocol-aware corpus quality metrics (valid frames, command/state coverage).
 - Grammar/state-aware mutation only after the deterministic harness work.

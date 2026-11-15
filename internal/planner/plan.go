@@ -200,6 +200,12 @@ func functionTargetPlan(
 	}
 	tp.Platform.HostTriple, tp.Platform.TargetTriple = variantTriples(analysis, fn.VariantID)
 	if fact != nil {
+		var merged bool
+		fact, merged = mergeInterproceduralFact(analysis, fn, fact)
+		if merged {
+			tp.Analysis.Provenance = append(tp.Analysis.Provenance, "interprocedural_ir")
+			tp.Reasons = append(tp.Reasons, "IR argument uses propagated through local callees")
+		}
 		tp.Analysis.IR = "observed"
 		tp.Analysis.Provenance = append(tp.Analysis.Provenance, "llvm_ir")
 		tp.Analysis.IRDataDependent = fact.DataDependent

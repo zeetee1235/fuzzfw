@@ -298,6 +298,35 @@ func TestOutputCapacityOverrunDetected(t *testing.T) {
 	}
 }
 
+func TestInterproceduralIRUses(t *testing.T) {
+	project := fixture("c_interproc")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("interprocedural check exit = %d\n%s", code, stderr)
+	}
+	planData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan map[string]any
+	if err := json.Unmarshal(planData, &plan); err != nil {
+		t.Fatal(err)
+	}
+	target := plan["targets"].([]any)[0].(map[string]any)
+	provenance := target["analysis"].(map[string]any)["provenance"].([]any)
+	found := false
+	for _, item := range provenance {
+		if item == "interprocedural_ir" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("interprocedural provenance missing: %v", provenance)
+	}
+}
+
 func TestCommandDictionaryGenerated(t *testing.T) {
 	project := fixture("c_commands")
 	ensureBuild(t, project)

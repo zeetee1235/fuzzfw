@@ -20,6 +20,7 @@
 #include "clang/Index/USRGeneration.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "clang/Tooling/Tooling.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -58,6 +59,7 @@ struct CallFact {
   std::string source;
   int line = 0;
   bool direct = true;
+  std::vector<int> arguments;
 };
 
 struct ParamFact {
@@ -199,9 +201,15 @@ void sortUnique(std::vector<std::string> &values) {
 
 class BodyVisitor : public RecursiveASTVisitor<BodyVisitor> {
 public:
-  BodyVisitor(ASTContext &context, std::string root, std::map<std::string, bool> packed)
+  BodyVisitor(ASTContext &context, std::string root, std::map<std::string, bool> packed,
+              const FunctionDecl *function)
       : context_(context), sm_(context.getSourceManager()), root_(std::move(root)),
-        packed_(std::move(packed)) {}
+        packed_(std::move(packed)) {
+    if (function != nullptr) {
+      for (unsigned i = 0; i < function->getNumParams(); ++i)
+        parameterIndices_[function->getParamDecl(i)] = static_cast<int>(i);
+    }
+  }
 
   bool VisitIntegerLiteral(IntegerLiteral *literal) {
     constants_.push_back(std::to_string(literal->getValue().getSExtValue()));
@@ -227,6 +235,17 @@ public:
       fact.source = relativeLocation(expr->getExprLoc());
       fact.line = sm_.getSpellingLineNumber(expr->getExprLoc());
       fact.direct = true;
+      for (unsigned i = 0; i < expr->getNumArgs(); ++i) {
+        const Expr *argument = expr->getArg(i)->IgnoreParenImpCasts();
+        if (const auto *ref = dyn_cast<DeclRefExpr>(argument)) {
+          if (const auto *param = dyn_cast<ParmVarDecl>(ref->getDecl())) {
+            auto it = parameterIndices_.find(param);
+            fact.arguments.push_back(it == parameterIndices_.end() ? -1 : it->second);
+            continue;
+          }
+        }
+        fact.arguments.push_back(-1);
+      }
       calls_.push_back(fact);
       addCallFlags(callee->getNameAsString());
     } else {
@@ -245,6 +264,17 @@ public:
       fact.source = relativeLocation(expr->getExprLoc());
       fact.line = sm_.getSpellingLineNumber(expr->getExprLoc());
       fact.direct = true;
+      for (unsigned i = 0; i < expr->getNumArgs(); ++i) {
+        const Expr *argument = expr->getArg(i)->IgnoreParenImpCasts();
+        if (const auto *ref = dyn_cast<DeclRefExpr>(argument)) {
+          if (const auto *param = dyn_cast<ParmVarDecl>(ref->getDecl())) {
+            auto it = parameterIndices_.find(param);
+            fact.arguments.push_back(it == parameterIndices_.end() ? -1 : it->second);
+            continue;
+          }
+        }
+        fact.arguments.push_back(-1);
+      }
       calls_.push_back(fact);
     }
     return true;
@@ -411,6 +441,7 @@ private:
   const SourceManager &sm_;
   std::string root_;
   std::map<std::string, bool> packed_;
+  llvm::DenseMap<const ParmVarDecl *, int> parameterIndices_;
   std::vector<CallFact> calls_;
   std::vector<std::string> constants_;
   std::vector<std::string> indirect_;
@@ -483,7 +514,7 @@ public:
       fact.params.push_back(std::move(p));
     }
     if (fact.definition) {
-      BodyVisitor body(context_, root_, packed_);
+      BodyVisitor body(context_, root_, packed_, decl);
       body.TraverseStmt(decl->getBody());
       fact.calls = body.calls();
       fact.constants = body.constants();
@@ -613,6 +644,12 @@ llvm::json::Object callJSON(const CallFact &call) {
   if (call.line > 0)
     object["line"] = call.line;
   object["direct"] = call.direct;
+  if (!call.arguments.empty()) {
+    llvm::json::Array arguments;
+    for (int index : call.arguments)
+      arguments.push_back(index);
+    object["arguments"] = std::move(arguments);
+  }
   return object;
 }
 

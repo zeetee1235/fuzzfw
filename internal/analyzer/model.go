@@ -82,11 +82,12 @@ type Param struct {
 
 // CallRef is a direct call edge.
 type CallRef struct {
-	Symbol string `json:"symbol,omitempty"`
-	Name   string `json:"name"`
-	Source string `json:"source,omitempty"`
-	Line   int    `json:"line,omitempty"`
-	Direct bool   `json:"direct"`
+	Symbol    string `json:"symbol,omitempty"`
+	Name      string `json:"name"`
+	Source    string `json:"source,omitempty"`
+	Line      int    `json:"line,omitempty"`
+	Direct    bool   `json:"direct"`
+	Arguments []int  `json:"arguments,omitempty"`
 }
 
 // Evidence is a source or IR observation backing a decision.

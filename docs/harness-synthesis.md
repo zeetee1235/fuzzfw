@@ -50,7 +50,8 @@ Evidence is collected from:
 2. AST pointer dereference/index use;
 3. LLVM IR `memory_read`, `memory_write`, `indexed`, `compare`,
    `compare_constant:<n>`, `branch`, `loop_bound`, `allocation_size`,
-   `passed_to_call`, `may_escape`, and `data_dependent`;
+   `passed_to_call`, `may_escape`, `data_dependent`, and conservative
+   interprocedural argument-use propagation;
 4. caller/unit-test evidence (future P1);
 5. explicit `targets.args` user contract.
 

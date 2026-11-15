@@ -97,7 +97,7 @@ plan.json ──► harness_plan.json ──► generated/harness.c[.cpp]
 | `fuzzfw` CLI | `cmd/fuzzfw`, `internal/cli` |
 | `build_import` | `internal/compdb`, `internal/manifest` |
 | `analyze` | `analyzer/clang`, fallback `internal/analyzer` |
-| `ir_analyze` | `analyzer/llvm` (LoopInfo/DominatorTree, AA/MemorySSA, compare constants), fallback `internal/analyzer/ir.go` |
+| `ir_analyze` | `analyzer/llvm` (LoopInfo/DominatorTree, AA/MemorySSA, compare constants, interprocedural use propagation) |
 | `plan` | `internal/planner` |
 | `harness` | `internal/harness` |
 | `host_build` | `internal/hostbuild` |

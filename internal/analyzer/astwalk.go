@@ -281,6 +281,7 @@ func functionID(fn Function) string {
 type bodyInfo struct {
 	calls     []CallRef
 	constants []string
+	paramIDs  map[string]int
 	indirect  []string
 	reads     map[string]bool
 	writes    map[string]bool
@@ -291,9 +292,15 @@ type bodyInfo struct {
 
 func (idx *astIndex) analyzeBody(node *astNode, source string) bodyInfo {
 	info := bodyInfo{
-		reads:  map[string]bool{},
-		writes: map[string]bool{},
-		flags:  map[string]bool{},
+		reads:    map[string]bool{},
+		writes:   map[string]bool{},
+		flags:    map[string]bool{},
+		paramIDs: map[string]int{},
+	}
+	for _, child := range node.Inner {
+		if child.Kind == "ParmVarDecl" && child.ID != "" {
+			info.paramIDs[child.ID] = len(info.paramIDs)
+		}
 	}
 	seenCalls := map[string]bool{}
 	for i := range node.Inner {
@@ -346,6 +353,7 @@ func (idx *astIndex) walkBody(node *astNode, source string, writeCtx bool, info 
 				seenCalls[key] = true
 				call.Source = source
 				call.Line = node.Loc.line()
+				call.Arguments = callArgumentIndices(node, info.paramIDs)
 				info.calls = append(info.calls, call)
 				for flag, reason := range hardwareFlagsForCall(call.Name) {
 					info.flags[flag] = true
@@ -632,4 +640,34 @@ func astValueString(node *astNode) string {
 		return number.String()
 	}
 	return ""
+}
+
+func callArgumentIndices(node *astNode, params map[string]int) []int {
+	if len(node.Inner) <= 1 {
+		return nil
+	}
+	var indices []int
+	for i := 1; i < len(node.Inner); i++ {
+		if index, ok := parameterIndex(&node.Inner[i], params); ok {
+			indices = append(indices, index)
+		} else {
+			indices = append(indices, -1)
+		}
+	}
+	return indices
+}
+
+func parameterIndex(node *astNode, params map[string]int) (int, bool) {
+	if node.Kind == "DeclRefExpr" && node.ReferencedDecl != nil {
+		index, ok := params[node.ReferencedDecl.ID]
+		return index, ok
+	}
+	switch node.Kind {
+	case "ImplicitCastExpr", "CStyleCastExpr", "CXXStaticCastExpr", "CXXReinterpretCastExpr",
+		"ParenExpr", "CXXBindTemporaryExpr", "MaterializeTemporaryExpr":
+		if len(node.Inner) > 0 {
+			return parameterIndex(&node.Inner[0], params)
+		}
+	}
+	return 0, false
 }
