@@ -7,7 +7,7 @@
 | Host OS | Linux x86-64 | Primary target. Other Linux architectures are not release-validated. |
 | Go | 1.23+ | Single static control-plane binary. |
 | Clang/LLVM | 17+ | AST JSON fallback and native analyzers target modern Clang. |
-| Sanitizers | ASan, UBSan | Default `address,undefined` with `-fno-sanitize-recover=all`. |
+| Sanitizers | ASan, UBSan, LSan, MSan, TSan, integer, implicit-conversion, local-bounds, pointer-overflow, object-size | Default `address,undefined` with `-fno-sanitize-recover=all`. MSan requires an instrumented runtime and cannot be combined with ASan/TSan. |
 | CMake compdb | Yes | `compile_commands.json` with `arguments` or `command`. |
 | Make compdb | Yes, if a valid JSON compdb is produced | fuzzfw does not infer link commands from Makefiles. |
 | CMake File API | Not yet | P1. |
@@ -38,10 +38,12 @@
 | `fn(uint8_t *, size_t)` | Automatic with a writable copy when read/ownership evidence is sufficient. |
 | `fn(const char *, size_t)` | Automatic as bytes+length. |
 | `uint16_t`/`uint32_t`/signed length | Automatic with exact-width guards; no silent truncation. |
-| Pointer + length + capacity | `adaptable` unless explicit `args` contract; no guessed equality. |
-| Output-only buffer | `adaptable`/blocked; wrapper required. |
-| Context/object pointer | `adaptable`; wrapper required. |
-| UART/network callback | P1 with approved adapter/event model. |
+| Pointer + length + capacity | Explicit `args` contract with `output_bytes`; no guessed equality. |
+| Output-only buffer | Explicit `OUTPUT_BUFFER`/`CAPACITY` roles; otherwise blocked. |
+| Context/object pointer | C context lifecycle via `[targets.context]`; C++ object pointer via factory. |
+| Stateful frames | `input = "length_prefixed"` with `state_probe` and `frame_reset`. |
+| Post-call invariant | Explicit `invariant_check` hook (`int(int)` or return+output form). |
+| UART/network callback | P1 with approved adapter/event model; not implemented yet. |
 | Existing libFuzzer harness | Not reused in P0; wrapper path available. |
 
 ## Engines
