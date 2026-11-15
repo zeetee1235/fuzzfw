@@ -180,3 +180,47 @@ func TestSequenceHarnessContextStateProbe(t *testing.T) {
 		}
 	}
 }
+
+func TestInvariantCheckEmission(t *testing.T) {
+	plan := testPlan(t)
+	plan.Target.InvariantCheck = "packet_invariant"
+	plan.Target.InvariantArgs = 1
+	source, _, err := Emit(plan, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"long long fuzzfw_return = 0;",
+		"fuzzfw_return = parse(data, size);",
+		`if (packet_invariant((int)fuzzfw_return) != 0) fuzzfw_invariant_failed("packet_invariant");`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing %q in:\n%s", want, source)
+		}
+	}
+}
+
+func TestInvariantCheckOutputEmission(t *testing.T) {
+	plan := testPlan(t)
+	plan.CopyInput = true
+	plan.OutputBytes = 16
+	plan.Target.InvariantCheck = "packet_invariant"
+	plan.Target.InvariantArgs = 3
+	plan.RoleBindings = append(plan.RoleBindings,
+		planner.RoleBinding{Argument: 2, Role: planner.RoleOutputBuffer, Source: "output", Type: "uint8_t *"},
+		planner.RoleBinding{Argument: 3, Role: planner.RoleCapacity, Source: "output.capacity", Type: "size_t"},
+	)
+	source, _, err := Emit(plan, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"long long fuzzfw_return = 0;",
+		"fuzzfw_return = parse(input, size, (uint8_t *)output, 16);",
+		`if (packet_invariant((int)fuzzfw_return, (const uint8_t *)output, (size_t)16) != 0) fuzzfw_invariant_failed("packet_invariant");`,
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing %q in:\n%s", want, source)
+		}
+	}
+}

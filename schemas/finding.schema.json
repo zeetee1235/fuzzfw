@@ -11,7 +11,7 @@
     "fingerprint": {"type": "string"},
     "target": {"type": "string"},
     "kind": {"type": "string"},
-    "origin": {"enum": ["target_crash", "adapter_failure", "harness_failure", "timeout", "unknown"]},
+    "origin": {"enum": ["target_crash", "target_invariant", "adapter_failure", "harness_failure", "timeout", "unknown"]},
     "reproduction": {
       "type": "object",
       "required": ["level", "success", "attempts", "flaky", "non_reproducing"],

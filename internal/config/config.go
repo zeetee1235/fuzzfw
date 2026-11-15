@@ -115,6 +115,7 @@ type Target struct {
 	MaxFrames       int               `toml:"max_frames"`
 	StateProbe      string            `toml:"state_probe"`
 	FrameReset      string            `toml:"frame_reset"`
+	InvariantCheck  string            `toml:"invariant_check"`
 	Setup           string            `toml:"setup"`
 	Teardown        string            `toml:"teardown"`
 	Factory         string            `toml:"factory"`
@@ -449,6 +450,11 @@ func normalize(file File, path, base string) (*Config, error) {
 		}
 		if target.FrameReset != "" && target.Input != "length_prefixed" {
 			return nil, usageError(fmt.Sprintf("target %s: frame_reset requires input=length_prefixed", target.Name))
+		}
+		if target.Input == "manual_wrapper" || target.Input == "existing_harness" {
+			if target.StateProbe != "" || target.FrameReset != "" || target.InvariantCheck != "" {
+				return nil, usageError(fmt.Sprintf("target %s: state_probe, frame_reset, and invariant_check require a generated harness", target.Name))
+			}
 		}
 		if target.OutputBytes < 0 || target.OutputBytes > 1024*1024 {
 			return nil, usageError(fmt.Sprintf("target %s: output_bytes must be between 0 and 1048576", target.Name))

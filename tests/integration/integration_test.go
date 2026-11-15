@@ -382,6 +382,35 @@ func TestLengthPrefixedSequencePasses(t *testing.T) {
 	}
 }
 
+func TestInvariantOracleDetectsOutputBug(t *testing.T) {
+	project := fixture("c_invariant")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 1 {
+		t.Fatalf("invariant check exit = %d, want 1\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	findings := summary["findings"].([]any)
+	if len(findings) == 0 {
+		t.Fatal("invariant finding missing")
+	}
+	finding := findings[0].(map[string]any)
+	if finding["origin"] != "target_invariant" {
+		t.Fatalf("origin = %v", finding["origin"])
+	}
+	if kind, _ := finding["kind"].(string); !strings.HasPrefix(kind, "invariant:") {
+		t.Fatalf("kind = %v", finding["kind"])
+	}
+	reproduction := finding["reproduction"].(map[string]any)
+	if reproduction["level"] != "R1_HOST_REPRODUCED" {
+		t.Fatalf("reproduction = %v", reproduction)
+	}
+	if summary["metrics"].(map[string]any)["new_findings_reproduced"].(float64) != 1 {
+		t.Fatalf("metrics = %v", summary["metrics"])
+	}
+}
+
 func TestCContextLifecyclePasses(t *testing.T) {
 	project := fixture("c_context")
 	ensureBuild(t, project)

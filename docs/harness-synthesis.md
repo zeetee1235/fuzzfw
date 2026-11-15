@@ -187,6 +187,22 @@ against the AST. A raw-pointer factory without `destroy` is blocked. A
 non-static member factory, reference return, or mismatched class is blocked. If
 the factory cannot be proven, use the user wrapper path.
 
+## Invariant oracle
+
+A target can declare an explicit post-call oracle:
+
+```toml
+invariant_check = "packet_invariant"
+```
+
+Supported signatures are `int(int)` and
+`int(int, const uint8_t *, size_t)`, where the second form receives the
+configured output buffer and capacity. The harness captures the original target
+return value, calls the oracle after the target/events, and aborts with a stable
+`fuzzfw invariant violated: NAME` message when it returns non-zero. Triage
+classifies this as `target_invariant` at the same R1 replay level as a crash.
+The oracle is explicit; no semantic invariant is guessed from the target body.
+
 ## Output buffers and capacity
 
 Explicit output buffers are supported for parsers that write into caller-owned

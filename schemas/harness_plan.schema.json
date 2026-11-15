@@ -28,7 +28,9 @@
         "is_static_method": {"type": "boolean"},
         "events": {"type": "array"},
         "state_probe": {"type": "string"},
-        "frame_reset": {"type": "string"}
+        "frame_reset": {"type": "string"},
+        "invariant_check": {"type": "string"},
+        "invariant_args": {"type": "integer", "minimum": 1}
       }
     },
     "role_bindings": {"type": "array"},

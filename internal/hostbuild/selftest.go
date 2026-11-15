@@ -19,9 +19,10 @@ import (
 )
 
 var (
-	asanPattern  = regexp.MustCompile(`AddressSanitizer: ([A-Za-z0-9_-]+)`)
-	lsanPattern  = regexp.MustCompile(`LeakSanitizer: ([A-Za-z0-9_-]+)`)
-	ubsanPattern = regexp.MustCompile(`runtime error: ([^\n]+)`)
+	asanPattern      = regexp.MustCompile(`AddressSanitizer: ([A-Za-z0-9_-]+)`)
+	lsanPattern      = regexp.MustCompile(`LeakSanitizer: ([A-Za-z0-9_-]+)`)
+	ubsanPattern     = regexp.MustCompile(`runtime error: ([^\n]+)`)
+	invariantPattern = regexp.MustCompile(`fuzzfw invariant violated:\s*([^\n]+)`)
 )
 
 type selftestCase struct {
@@ -293,6 +294,9 @@ func sanitizerKind(log string) string {
 }
 
 func classifyOrigin(log string, target planner.TargetPlan) string {
+	if invariantPattern.MatchString(log) {
+		return "target_invariant"
+	}
 	if strings.Contains(log, target.Name) || (target.Source != "" && strings.Contains(log, filepath.Base(target.Source))) {
 		return "target_crash"
 	}

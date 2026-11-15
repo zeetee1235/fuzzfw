@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "fuzzfw_events.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static fuzzfw_input_stream g_input = {NULL, 0, 0};
@@ -77,4 +79,10 @@ uint64_t fuzzfw_run_frames(void) {
 
 uint64_t fuzzfw_run_state_hash(void) {
     return g_run_state_hash;
+}
+
+void fuzzfw_invariant_failed(const char *name) {
+    fprintf(stderr, "fuzzfw invariant violated: %s\n", name == NULL ? "unknown" : name);
+    fflush(stderr);
+    abort();
 }

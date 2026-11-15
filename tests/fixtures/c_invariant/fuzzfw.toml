@@ -1,0 +1,25 @@
+schema_version = 1
+
+[project]
+name = "c-invariant-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+corpus_dir = "corpus"
+
+[[targets]]
+name = "decode_packet"
+symbol = "decode_packet"
+source = "src/invariant.c"
+header = "include/invariant.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 32
+output_bytes = 8
+args = ["FUZZ_BYTES", "LOGICAL_LENGTH", "OUTPUT_BUFFER", "CAPACITY"]
+invariant_check = "packet_invariant"
+seeds = ["seeds"]

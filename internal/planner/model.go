@@ -190,6 +190,8 @@ type TargetPlan struct {
 	MaxFrames      int                `json:"max_frames,omitempty"`
 	StateProbe     string             `json:"state_probe,omitempty"`
 	FrameReset     string             `json:"frame_reset,omitempty"`
+	InvariantCheck string             `json:"invariant_check,omitempty"`
+	InvariantArgs  int                `json:"invariant_args,omitempty"`
 	Seeds          []string           `json:"seeds,omitempty"`
 	Dictionary     []string           `json:"dictionary,omitempty"`
 	Wrapper        *WrapperPlan       `json:"wrapper,omitempty"`

@@ -228,7 +228,8 @@ func New(input Input) *Summary {
 		if finding.Origin == "harness_failure" || finding.Origin == "adapter_failure" {
 			summary.Metrics.HarnessFailures++
 		}
-		if finding.New && finding.Reproduction.Level == "R1_HOST_REPRODUCED" && finding.Origin == "target_crash" {
+		if finding.New && finding.Reproduction.Level == "R1_HOST_REPRODUCED" &&
+			(finding.Origin == "target_crash" || finding.Origin == "target_invariant") {
 			summary.Metrics.NewFindingsReproduced++
 		}
 	}

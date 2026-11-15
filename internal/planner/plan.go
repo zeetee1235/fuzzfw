@@ -216,6 +216,18 @@ func functionTargetPlan(
 			tp.Context.Provenance = append(tp.Context.Provenance, "frame_reset")
 		}
 	}
+	if target.InvariantCheck != "" {
+		diagnostic, arity := validateInvariantCheck(analysis, target, fn)
+		if diagnostic != nil {
+			tp.Classification = Blocked
+			tp.Diagnostics = append(tp.Diagnostics, *diagnostic)
+			tp.Reasons = append(tp.Reasons, "invariant_check signature is invalid")
+		} else {
+			tp.InvariantCheck = target.InvariantCheck
+			tp.InvariantArgs = arity
+			tp.Context.Provenance = append(tp.Context.Provenance, "invariant_check")
+		}
+	}
 	tp.Platform.HostTriple, tp.Platform.TargetTriple = variantTriples(analysis, fn.VariantID)
 	if fact != nil {
 		var merged bool

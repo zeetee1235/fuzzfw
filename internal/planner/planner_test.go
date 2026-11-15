@@ -266,3 +266,40 @@ func TestStateProbeAndFrameResetSignatures(t *testing.T) {
 		}
 	}
 }
+
+func TestInvariantCheckSignatures(t *testing.T) {
+	analysis := &analyzer.Analysis{Functions: []analyzer.Function{
+		{Name: "packet_invariant", QualifiedName: "packet_invariant", Signature: "int (int, const uint8_t *, size_t)"},
+		{Name: "ret_check", QualifiedName: "ret_check", Signature: "int (int)"},
+		{Name: "bad_invariant", QualifiedName: "bad_invariant", Signature: "void (int)"},
+		{Name: "bad_arity", QualifiedName: "bad_arity", Signature: "int (int, int)"},
+	}}
+	targetFn := &analyzer.Function{Name: "decode_packet", ReturnType: "int"}
+	for _, testCase := range []struct {
+		name string
+		cfg  config.Target
+		args int
+		ok   bool
+	}{
+		{"three args", config.Target{Name: "decode_packet", InvariantCheck: "packet_invariant"}, 3, true},
+		{"one arg", config.Target{Name: "decode_packet", InvariantCheck: "ret_check"}, 1, true},
+		{"bad return", config.Target{Name: "decode_packet", InvariantCheck: "bad_invariant"}, 0, false},
+		{"bad arity", config.Target{Name: "decode_packet", InvariantCheck: "bad_arity"}, 0, false},
+		{"missing", config.Target{Name: "decode_packet", InvariantCheck: "missing"}, 0, false},
+	} {
+		diagnostic, args := validateInvariantCheck(analysis, testCase.cfg, targetFn)
+		if testCase.ok {
+			if diagnostic != nil || args != testCase.args {
+				t.Fatalf("%s: diagnostic=%v args=%d", testCase.name, diagnostic, args)
+			}
+			continue
+		}
+		if diagnostic == nil {
+			t.Fatalf("%s: expected a diagnostic", testCase.name)
+		}
+	}
+	voidTarget := &analyzer.Function{Name: "decode_packet", ReturnType: "void"}
+	if diagnostic, _ := validateInvariantCheck(analysis, config.Target{Name: "decode_packet", InvariantCheck: "ret_check"}, voidTarget); diagnostic == nil {
+		t.Fatal("void target return should be rejected")
+	}
+}

@@ -63,7 +63,8 @@ behavior.
 - Interprocedural input taint (caller/callee argument mapping) — complete in the
   deterministic local-call form. Expressions that do not map directly to a
   parameter stay unknown.
-- Return/output invariant oracle.
+- Return/output invariant oracle — complete in explicit hook form
+  (`invariant_check = "symbol"`), with R1 triage and honggfuzz discovery.
 - Protocol-aware corpus quality metrics (valid frames, command/state coverage).
 - Grammar/state-aware mutation only after the deterministic harness work.
 - Optional MSan profile; integer/local-bounds profiles are implemented.

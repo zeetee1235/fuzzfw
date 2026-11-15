@@ -40,6 +40,8 @@ type Target struct {
 	Events         []planner.EventHook        `json:"events,omitempty"`
 	StateProbe     string                     `json:"state_probe,omitempty"`
 	FrameReset     string                     `json:"frame_reset,omitempty"`
+	InvariantCheck string                     `json:"invariant_check,omitempty"`
+	InvariantArgs  int                        `json:"invariant_args,omitempty"`
 }
 
 // Plan is the harness generator's input/output contract.
@@ -119,6 +121,8 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 			Events:         append([]planner.EventHook(nil), target.Events...),
 			StateProbe:     target.StateProbe,
 			FrameReset:     target.FrameReset,
+			InvariantCheck: target.InvariantCheck,
+			InvariantArgs:  target.InvariantArgs,
 		},
 		RoleBindings: append([]planner.RoleBinding(nil), target.Roles...),
 		Constraints:  append([]planner.Constraint(nil), target.Constraints...),
@@ -370,6 +374,10 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 			return "", "", err
 		}
 	} else {
+		capture := invariantCapture(plan)
+		if capture != "" {
+			fmt.Fprintf(&b, "    long long %s = 0;\n", capture)
+		}
 		for _, event := range plan.Target.Events {
 			if event.Phase == "before" {
 				fmt.Fprintf(&b, "    %s();\n", event.Symbol)
@@ -379,7 +387,7 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 		if err != nil {
 			return "", "", err
 		}
-		if err := emitCall(&b, plan, args); err != nil {
+		if err := emitCall(&b, plan, args, capture, "    "); err != nil {
 			return "", "", err
 		}
 		for _, event := range plan.Target.Events {
@@ -387,7 +395,8 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 				fmt.Fprintf(&b, "    %s();\n", event.Symbol)
 			}
 		}
-		emitStateProbe(&b, plan, "0", contextCast)
+		emitInvariant(&b, plan, needsOutput, "    ")
+		emitStateProbe(&b, plan, "0", contextCast, "    ")
 	}
 	for _, teardown := range plan.Context.Teardown {
 		fmt.Fprintf(&b, "    %s();\n", teardown)
@@ -459,14 +468,21 @@ func callArgs(plan *Plan, roles map[int]planner.RoleBinding, bufferExpr, lengthE
 	return args, nil
 }
 
-func emitCall(b *strings.Builder, plan *Plan, args []string) error {
+func emitCall(b *strings.Builder, plan *Plan, args []string, capture, indent string) error {
 	callSymbol := plan.Target.CallSymbol
 	if callSymbol == "" {
 		callSymbol = plan.Target.LinkSymbol
 	}
+	invoke := func(invocation string) {
+		if capture != "" {
+			fmt.Fprintf(b, "%s%s = %s;\n", indent, capture, invocation)
+		} else {
+			fmt.Fprintf(b, "%s(void)%s;\n", indent, invocation)
+		}
+	}
 	switch {
 	case plan.Target.IsStaticMethod:
-		fmt.Fprintf(b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
+		invoke(fmt.Sprintf("%s(%s)", callSymbol, strings.Join(args, ", ")))
 	case plan.Target.Factory != nil:
 		method := plan.Target.MethodName
 		if method == "" {
@@ -474,17 +490,17 @@ func emitCall(b *strings.Builder, plan *Plan, args []string) error {
 		}
 		switch plan.Target.Factory.Style {
 		case "value", "reference":
-			fmt.Fprintf(b, "    (void)fuzzfw_object.%s(%s);\n", method, strings.Join(args, ", "))
+			invoke(fmt.Sprintf("fuzzfw_object.%s(%s)", method, strings.Join(args, ", ")))
 		case "unique_ptr", "shared_ptr", "pointer":
-			fmt.Fprintf(b, "    (void)fuzzfw_object->%s(%s);\n", method, strings.Join(args, ", "))
+			invoke(fmt.Sprintf("fuzzfw_object->%s(%s)", method, strings.Join(args, ", ")))
 		default:
 			return fmt.Errorf("unsupported factory style %q", plan.Target.Factory.Style)
 		}
 		if plan.Target.Factory.Style == "pointer" && plan.Target.Factory.Destroy != "" {
-			fmt.Fprintf(b, "    %s(fuzzfw_object);\n", plan.Target.Factory.Destroy)
+			fmt.Fprintf(b, "%s%s(fuzzfw_object);\n", indent, plan.Target.Factory.Destroy)
 		}
 	default:
-		fmt.Fprintf(b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
+		invoke(fmt.Sprintf("%s(%s)", callSymbol, strings.Join(args, ", ")))
 	}
 	return nil
 }
@@ -515,6 +531,10 @@ func emitSequence(b *strings.Builder, plan *Plan, roles map[int]planner.RoleBind
 	b.WriteString("        if (fuzzfw_frame_len) memcpy(frame_copy, ")
 	b.WriteString(baseExpr)
 	b.WriteString(" + fuzzfw_offset, fuzzfw_frame_len); else frame_copy[0] = 0;\n")
+	capture := invariantCapture(plan)
+	if capture != "" {
+		fmt.Fprintf(b, "        long long %s = 0;\n", capture)
+	}
 	for _, event := range plan.Target.Events {
 		if event.Phase == "before" {
 			fmt.Fprintf(b, "        %s();\n", event.Symbol)
@@ -525,7 +545,7 @@ func emitSequence(b *strings.Builder, plan *Plan, roles map[int]planner.RoleBind
 		b.WriteString("        free(frame_copy);\n")
 		return err
 	}
-	if err := emitCall(b, plan, args); err != nil {
+	if err := emitCall(b, plan, args, capture, "        "); err != nil {
 		b.WriteString("        free(frame_copy);\n")
 		return err
 	}
@@ -534,7 +554,8 @@ func emitSequence(b *strings.Builder, plan *Plan, roles map[int]planner.RoleBind
 			fmt.Fprintf(b, "        %s();\n", event.Symbol)
 		}
 	}
-	emitStateProbe(b, plan, "(uint32_t)fuzzfw_frames", contextCast)
+	emitInvariant(b, plan, hasOutput, "        ")
+	emitStateProbe(b, plan, "(uint32_t)fuzzfw_frames", contextCast, "        ")
 	if plan.Target.FrameReset != "" {
 		if plan.Target.ContextObject != nil {
 			fmt.Fprintf(b, "        %s(%s);\n", plan.Target.FrameReset, contextCast)
@@ -686,16 +707,44 @@ func outputPointerCast(typeName, value string) string {
 	return "(" + trimmed + ")" + value
 }
 
-func emitStateProbe(b *strings.Builder, plan *Plan, indexExpr, contextCast string) {
+func emitStateProbe(b *strings.Builder, plan *Plan, indexExpr, contextCast, indent string) {
 	if plan.Target.ContextObject != nil && plan.Target.StateProbe != "" {
-		fmt.Fprintf(b, "    int fuzzfw_state = %s(%s);\n", plan.Target.StateProbe, contextCast)
-		fmt.Fprintf(b, "    fuzzfw_run_frame(%s, fuzzfw_state);\n", indexExpr)
+		fmt.Fprintf(b, "%sint fuzzfw_state = %s(%s);\n", indent, plan.Target.StateProbe, contextCast)
+		fmt.Fprintf(b, "%sfuzzfw_run_frame(%s, fuzzfw_state);\n", indent, indexExpr)
 		return
 	}
 	if plan.Target.StateProbe != "" {
-		fmt.Fprintf(b, "    int fuzzfw_state = %s();\n", plan.Target.StateProbe)
-		fmt.Fprintf(b, "    fuzzfw_run_frame(%s, fuzzfw_state);\n", indexExpr)
+		fmt.Fprintf(b, "%sint fuzzfw_state = %s();\n", indent, plan.Target.StateProbe)
+		fmt.Fprintf(b, "%sfuzzfw_run_frame(%s, fuzzfw_state);\n", indent, indexExpr)
 		return
 	}
-	fmt.Fprintf(b, "    fuzzfw_run_frame(%s, 0);\n", indexExpr)
+	fmt.Fprintf(b, "%sfuzzfw_run_frame(%s, 0);\n", indent, indexExpr)
+}
+
+func invariantCapture(plan *Plan) string {
+	if plan.Target.InvariantCheck == "" {
+		return ""
+	}
+	return "fuzzfw_return"
+}
+
+func emitInvariant(b *strings.Builder, plan *Plan, hasOutput bool, indent string) {
+	check := plan.Target.InvariantCheck
+	if check == "" {
+		return
+	}
+	outputExpr := "NULL"
+	capacityExpr := "0"
+	if hasOutput {
+		outputExpr = "(const uint8_t *)output"
+		capacityExpr = fmt.Sprintf("(size_t)%d", plan.OutputBytes)
+	}
+	switch plan.Target.InvariantArgs {
+	case 1:
+		fmt.Fprintf(b, "%sif (%s((int)fuzzfw_return) != 0) fuzzfw_invariant_failed(\"%s\");\n", indent, check, check)
+	case 3:
+		fmt.Fprintf(b, "%sif (%s((int)fuzzfw_return, %s, %s) != 0) fuzzfw_invariant_failed(\"%s\");\n", indent, check, outputExpr, capacityExpr, check)
+	default:
+		fmt.Fprintf(b, "%s/* invariant check has unsupported arity */\n", indent)
+	}
 }

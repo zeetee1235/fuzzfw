@@ -29,6 +29,9 @@ void fuzzfw_run_frame(uint32_t index, int state);
 uint64_t fuzzfw_run_frames(void);
 uint64_t fuzzfw_run_state_hash(void);
 
+/* Explicit post-call oracle failure. The message is stable for triage. */
+void fuzzfw_invariant_failed(const char *name);
+
 #ifdef __cplusplus
 }
 #endif

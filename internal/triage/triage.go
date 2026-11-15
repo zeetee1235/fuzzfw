@@ -86,10 +86,11 @@ type ReplayOutcome struct {
 }
 
 var (
-	asanLine  = regexp.MustCompile(`AddressSanitizer:\s*([A-Za-z0-9_-]+)`)
-	lsanLine  = regexp.MustCompile(`LeakSanitizer:\s*([A-Za-z0-9_-]+)`)
-	ubsanLine = regexp.MustCompile(`runtime error:\s*([^\n]+)`)
-	frameLine = regexp.MustCompile(`^\s*#(\d+)\s+0x[0-9a-fA-F]+\s+in\s+([^\s]+)\s+([^\s:]+):(\d+)`)
+	asanLine      = regexp.MustCompile(`AddressSanitizer:\s*([A-Za-z0-9_-]+)`)
+	lsanLine      = regexp.MustCompile(`LeakSanitizer:\s*([A-Za-z0-9_-]+)`)
+	ubsanLine     = regexp.MustCompile(`runtime error:\s*([^\n]+)`)
+	frameLine     = regexp.MustCompile(`^\s*#(\d+)\s+0x[0-9a-fA-F]+\s+in\s+([^\s]+)\s+([^\s:]+):(\d+)`)
+	invariantLine = regexp.MustCompile(`fuzzfw invariant violated:\s*([^\n]+)`)
 )
 
 // Process triages raw engine findings for one target.
@@ -283,6 +284,9 @@ func RunOnce(ctx context.Context, cfg *config.Config, build *hostbuild.Result, d
 }
 
 func crashKind(log string, exitCode, signal int, timedOut bool) string {
+	if match := invariantLine.FindStringSubmatch(log); match != nil {
+		return "invariant:" + strings.TrimSpace(match[1])
+	}
 	if match := asanLine.FindStringSubmatch(log); match != nil {
 		return "address:" + match[1]
 	}
@@ -331,6 +335,9 @@ func normalizeFrames(log string) ([]string, SourceLoc) {
 }
 
 func classifyOrigin(log string, frames []string, build *hostbuild.Result) string {
+	if invariantLine.MatchString(log) {
+		return "target_invariant"
+	}
 	if build.Target != "" && strings.Contains(log, build.Target) {
 		return "target_crash"
 	}

@@ -104,6 +104,7 @@ definitions, include paths, forced includes, and standards are preserved.
 | `max_frames` | `64` for `length_prefixed` | Maximum frames processed from one fuzz input. |
 | `state_probe` | unset | `int(void)` or `int(context *)` function called after each target/event sequence; its value is folded into the state hash. |
 | `frame_reset` | unset | `void(void)` or `void(context *)` function called after each frame in `length_prefixed` mode; requires `input = "length_prefixed"`. |
+| `invariant_check` | unset | Post-call oracle: `int(int)` or `int(int, const uint8_t *, size_t)`. Non-zero aborts as a triaged `target_invariant` finding. Requires a non-void integer target return and cannot be used with `manual_wrapper`. |
 | `setup` | unset | Explicit setup function called before the target. Must be declared by the included header. |
 | `teardown` | unset | Explicit teardown function called after the target. |
 | `factory` | unset | Explicit C++ factory symbol for a member function target. Value, reference, raw pointer, `std::unique_ptr`, and `std::shared_ptr` returns are recognized. |
