@@ -16,7 +16,12 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/AssumptionCache.h"
+#include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/MemorySSA.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/ConstantRange.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -99,7 +104,10 @@ struct FunctionFacts {
   std::set<std::string> globals;
   std::set<std::string> flags;
   std::set<std::string> unknowns;
+  std::set<std::string> aliasFacts;
+  unsigned memorySSAAccesses = 0;
   bool dataDependent = false;
+  unsigned volatileAccesses = 0;
   unsigned branchCount = 0;
   unsigned loadCount = 0;
   unsigned storeCount = 0;
@@ -146,7 +154,7 @@ FunctionFacts analyzeFunction(const Function &function, const Module &module,
           if (!globalName(pointer).empty())
             facts.globals.insert("write:" + globalName(pointer));
           if (store->isVolatile())
-            facts.flags.insert("MMIO_DIRECT");
+            facts.volatileAccesses++;
           continue;
         }
         if (const auto *load = dyn_cast<LoadInst>(&instruction)) {
@@ -163,7 +171,7 @@ FunctionFacts analyzeFunction(const Function &function, const Module &module,
           if (!globalName(pointer).empty())
             facts.globals.insert("read:" + globalName(pointer));
           if (load->isVolatile())
-            facts.flags.insert("MMIO_DIRECT");
+            facts.volatileAccesses++;
           taint[load] = mask;
           continue;
         }
@@ -272,6 +280,39 @@ FunctionFacts analyzeFunction(const Function &function, const Module &module,
         markUses(facts.uses, mask, "loop_bound");
     }
   }
+  TargetLibraryInfoImpl tliImpl(Triple(module.getTargetTriple()));
+  TargetLibraryInfo tli(tliImpl);
+  AssumptionCache assumptionCache(const_cast<Function &>(function));
+  AAResults aliasAnalysis(tli);
+  BasicAAResult basicAA(module.getDataLayout(), function, tli, assumptionCache, &dominatorTree);
+  aliasAnalysis.addAAResult(basicAA);
+  MemorySSA memorySSA(const_cast<Function &>(function), &aliasAnalysis, &dominatorTree);
+  std::vector<const Argument *> pointerArguments;
+  for (const Argument &argument : function.args()) {
+    if (argument.getType()->isPointerTy())
+      pointerArguments.push_back(&argument);
+  }
+  for (std::size_t i = 0; i < pointerArguments.size(); ++i) {
+    for (std::size_t j = i + 1; j < pointerArguments.size(); ++j) {
+      AliasResult result = aliasAnalysis.alias(pointerArguments[i], pointerArguments[j]);
+      std::string kind;
+      AliasResult::Kind aliasKind = result;
+      switch (aliasKind) {
+      case AliasResult::NoAlias: kind = "no_alias"; break;
+      case AliasResult::MustAlias: kind = "must_alias"; break;
+      case AliasResult::PartialAlias: kind = "partial_alias"; break;
+      default: kind = "may_alias"; break;
+      }
+      facts.aliasFacts.insert(kind + ":" +
+                              std::to_string(i) + ":" + std::to_string(j));
+    }
+  }
+  for (const BasicBlock &block : function) {
+    for (const Instruction &instruction : block) {
+      if (memorySSA.getMemoryAccess(&instruction) != nullptr)
+        facts.memorySSAAccesses++;
+    }
+  }
   for (const ArgFact &arg : facts.uses) {
     if (arg.uses.count("memory_read"))
       facts.loadCount++;
@@ -318,10 +359,14 @@ llvm::json::Object factsJSON(const FunctionFacts &facts) {
   addArray("global_effects", facts.globals);
   addArray("hardware_flags", facts.flags);
   addArray("unknowns", facts.unknowns);
+  addArray("alias_facts", facts.aliasFacts);
+  object["memory_ssa_accesses"] = facts.memorySSAAccesses;
   object["branch_count"] = facts.branchCount;
   object["load_count"] = facts.loadCount;
   object["store_count"] = facts.storeCount;
   object["indirect_calls"] = facts.indirectCalls;
+  if (facts.volatileAccesses > 0)
+    object["volatile_accesses"] = facts.volatileAccesses;
   object["data_dependent"] = facts.dataDependent;
   return object;
 }

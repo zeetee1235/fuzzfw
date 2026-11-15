@@ -69,6 +69,15 @@ func resolveFactory(analysis *analyzer.Analysis, fn *analyzer.Function, target c
 	plan := &FactoryPlan{
 		Symbol: factory.QualifiedName, ClassType: classType, ReturnType: returnType, Style: style,
 	}
+	if style == "reference" {
+		if target.FactoryLifetime != "external" {
+			return nil, []diag.Diagnostic{diag.Newf(diag.EContextUnknown,
+				"factory %s returns a reference; set factory_lifetime=external only after verifying the referenced object outlives the call",
+				factory.QualifiedName,
+			).WithTarget(target.Name)}
+		}
+		plan.Lifetime = "external"
+	}
 	if style == "pointer" {
 		if target.Destroy == "" {
 			return nil, []diag.Diagnostic{diag.Newf(diag.EContextUnknown,
@@ -92,6 +101,12 @@ func resolveFactory(analysis *analyzer.Analysis, fn *analyzer.Function, target c
 			).WithTarget(target.Name)}
 		}
 		plan.Destroy = destroy.QualifiedName
+	}
+	if style != "reference" && target.FactoryLifetime != "" {
+		return nil, []diag.Diagnostic{diag.Newf(diag.EContextInvalid,
+			"targets.factory_lifetime is only valid for reference-returning factories; factory %s returns %s",
+			factory.QualifiedName, returnType,
+		).WithTarget(target.Name)}
 	}
 	if style != "pointer" && target.Destroy != "" {
 		return nil, []diag.Diagnostic{diag.Newf(diag.EContextInvalid,
@@ -159,7 +174,7 @@ func factoryStyle(returnType string) (string, string) {
 		return "pointer", strings.TrimSpace(strings.TrimSuffix(text, "*"))
 	}
 	if strings.HasSuffix(text, "&") {
-		return "", ""
+		return "reference", strings.TrimSpace(strings.TrimSuffix(text, "&"))
 	}
 	if strings.ContainsAny(text, "*&") {
 		return "", ""

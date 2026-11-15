@@ -322,12 +322,12 @@ func (idx *astIndex) walkBody(node *astNode, source string, writeCtx bool, info 
 			})
 		}
 	}
-	if strings.Contains(node.Type.QualType, "volatile") ||
-		(node.Kind == "UnaryOperator" && strings.Contains(node.Type.QualType, "volatile")) {
+	if strings.Contains(node.Type.QualType, "volatile") &&
+		(node.Kind == "UnaryOperator" || node.Kind == "ArraySubscriptExpr" || node.Kind == "MemberExpr") {
 		info.flags["MMIO_DIRECT"] = true
 		info.evidence = append(info.evidence, Evidence{
 			Kind: "volatile_access", Source: sourceLocation(source, node),
-			Detail: "volatile does not prove MMIO; conservative hardware flag", Confidence: "observed",
+			Detail: "volatile dereference; MMIO is not proven", Confidence: "observed",
 		})
 	}
 	if isCallKind(node.Kind) {

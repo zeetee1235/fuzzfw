@@ -5,12 +5,14 @@ package analyzer
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/fuzzfw/fuzzfw/internal/config"
 	"github.com/fuzzfw/fuzzfw/internal/proc"
+	eventsruntime "github.com/fuzzfw/fuzzfw/runtime/events"
 )
 
 // AdapterDefinition is the source-level evidence for a reviewed adapter.
@@ -33,7 +35,15 @@ func CheckAdapterDefinition(ctx context.Context, cfg *config.Config, source stri
 		compiler = cfg.File.Host.ClangXX
 		language = "c++"
 	}
-	args := []string{compiler, "-I", cfg.Root}
+	runtimeDir, runtimeErr := os.MkdirTemp("", "fuzzfw-adapter-runtime-*")
+	if runtimeErr != nil {
+		return nil, runtimeErr
+	}
+	defer os.RemoveAll(runtimeDir)
+	if err := os.WriteFile(filepath.Join(runtimeDir, "fuzzfw_events.h"), eventsruntime.HeaderSource, 0o644); err != nil {
+		return nil, err
+	}
+	args := []string{compiler, "-I", cfg.Root, "-I", runtimeDir}
 	for _, dir := range includeDirs {
 		args = append(args, "-I", dir)
 	}

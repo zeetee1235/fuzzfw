@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "original_symbol": "DMA_Read",
+  "prototype": "int(uint8_t *, size_t)",
+  "model": "status_and_output",
+  "effects": ["write_buffer", "return_status"],
+  "max_write": "requested",
+  "valid_context": "host event model with explicit flush hook",
+  "nondeterminism": "none",
+  "event_model": "dma_completion",
+  "completion": "deferred",
+  "ownership": "caller",
+  "limitations": ["does not model real DMA timing", "single synchronous read from the harness stream"]
+}

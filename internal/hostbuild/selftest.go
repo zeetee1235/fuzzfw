@@ -111,6 +111,56 @@ func (b *Builder) runSelftest(target planner.TargetPlan, hp *harness.Plan, binar
 		).Warning().WithTarget(target.Name))
 	}
 
+	// Persistent reset probe: call the same input multiple times inside one
+	// process and compare per-iteration coverage. This is the gate required
+	// before persistent engine mode can be trusted for a target.
+	if b.Cfg.File.Harness.PersistentResetCheck && b.Cfg.File.Host.Coverage {
+		if probeCase, ok := persistentProbeCase(result.Cases); ok {
+			reportPath := filepath.Join(casesDir, "persistent.report.json")
+			_ = os.Remove(reportPath)
+			argv := []string{binary, "--input", absJoin(b.Cfg.Root, probeCase.InputPath),
+				"--report", reportPath, "--entry-symbol", entrySymbol, "--iterations", "3"}
+			probeRun, probeErr := (proc.Runner{Timeout: timeout}).Run(b.Ctx, b.Cfg.Root, argv...)
+			report, readErr := readReplayReport(reportPath)
+			if probeErr != nil || readErr != nil || probeRun.ExitCode != 0 || len(report.Iterations) < 2 {
+				result.Stable = false
+				message := "persistent reset probe could not complete"
+				if probeErr != nil {
+					message += ": " + probeErr.Error()
+				} else if probeRun != nil {
+					message += fmt.Sprintf(" (exit %d)", probeRun.ExitCode)
+				}
+				diagnostics = append(diagnostics, diag.New(diag.EStateLeak, message).WithTarget(target.Name))
+			} else {
+				result.PersistentChecked = true
+				result.PersistentStable = true
+				// The first call may perform legitimate one-time C++/runtime
+				// initialization. Compare the warm iterations; a per-call
+				// state leak still changes the hash.
+				baseline := report.Iterations[1]
+				for index, iteration := range report.Iterations {
+					result.PersistentHashes = append(result.PersistentHashes, iteration.CoverageHash)
+					if index == 0 {
+						continue
+					}
+					if iteration.CoverageHash != baseline.CoverageHash {
+						result.PersistentStable = false
+					}
+					if (iteration.EntryHit == nil) != (baseline.EntryHit == nil) ||
+						(iteration.EntryHit != nil && baseline.EntryHit != nil && *iteration.EntryHit != *baseline.EntryHit) {
+						result.PersistentStable = false
+					}
+				}
+				if !result.PersistentStable {
+					result.Stable = false
+					diagnostics = append(diagnostics, diag.New(diag.EStateLeak,
+						"persistent reset probe produced different coverage across repeated calls",
+					).WithTarget(target.Name))
+				}
+			}
+		}
+	}
+
 	// Stability: repeat the first non-crashing case in a fresh process.
 	for _, caseResult := range result.Cases {
 		if caseResult.Crash || caseResult.Report == nil {
@@ -278,4 +328,18 @@ func tail(text string, limit int) string {
 		return text
 	}
 	return text[len(text)-limit:]
+}
+
+func persistentProbeCase(cases []CaseResult) (CaseResult, bool) {
+	for _, item := range cases {
+		if !item.Crash && item.Report != nil && item.InputSize > 0 {
+			return item, true
+		}
+	}
+	for _, item := range cases {
+		if !item.Crash && item.Report != nil {
+			return item, true
+		}
+	}
+	return CaseResult{}, false
 }

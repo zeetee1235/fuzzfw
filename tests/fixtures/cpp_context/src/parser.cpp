@@ -11,6 +11,12 @@ std::unique_ptr<Parser> Parser::create_unique() {
     return std::make_unique<Parser>();
 }
 
+Parser &Parser::create_ref() {
+    static Parser parser;
+    parser = Parser();
+    return parser;
+}
+
 int Parser::hash_static(const unsigned char *data, std::size_t len) {
     if (data == nullptr || len < 2) {
         return -1;
@@ -30,6 +36,14 @@ int Parser::feed(const unsigned char *data, std::size_t len) {
         state_ = (state_ * 33U) ^ static_cast<std::uint32_t>(data[i]);
     }
     return static_cast<int>(state_);
+}
+
+Session Session::create() {
+    return Session();
+}
+
+int Session::process(const unsigned char *data, std::size_t len) {
+    return parser_.feed(data, len);
 }
 
 RawParser *RawParser::create() {

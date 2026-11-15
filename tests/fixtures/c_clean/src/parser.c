@@ -41,3 +41,14 @@ int checksum_loop(const uint8_t *data, size_t len) {
     }
     return (int)sum;
 }
+
+int compare_buffers(const uint8_t *restrict a, size_t an,
+                    const uint8_t *restrict b, size_t bn) {
+    size_t n = an < bn ? an : bn;
+    for (size_t i = 0; i < n; ++i) {
+        if (a[i] != b[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}

@@ -36,11 +36,14 @@
           "global_effects": {"type": "array", "items": {"type": "string"}},
           "hardware_flags": {"type": "array", "items": {"type": "string"}},
           "unknowns": {"type": "array", "items": {"type": "string"}},
+          "alias_facts": {"type": "array", "items": {"type": "string"}},
+          "memory_ssa_accesses": {"type": "integer", "minimum": 0},
           "evidence": {"type": "array"},
           "branch_count": {"type": "integer", "minimum": 0},
           "load_count": {"type": "integer", "minimum": 0},
           "store_count": {"type": "integer", "minimum": 0},
           "indirect_calls": {"type": "integer", "minimum": 0},
+          "volatile_accesses": {"type": "integer", "minimum": 0},
           "data_dependent": {"type": "boolean"}
         }
       }

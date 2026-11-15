@@ -100,11 +100,19 @@ type PlatformPlan struct {
 
 // AnalysisEvidence is the provenance summary carried into the harness plan.
 type AnalysisEvidence struct {
-	AST             string   `json:"ast"`
-	IR              string   `json:"ir"`
-	IRDataDependent bool     `json:"ir_data_dependent,omitempty"`
-	Unknowns        []string `json:"unknowns,omitempty"`
-	Provenance      []string `json:"provenance,omitempty"`
+	AST                 string   `json:"ast"`
+	IR                  string   `json:"ir"`
+	IRDataDependent     bool     `json:"ir_data_dependent,omitempty"`
+	IRAliasFacts        []string `json:"ir_alias_facts,omitempty"`
+	IRMemorySSAAccesses int      `json:"ir_memory_ssa_accesses,omitempty"`
+	Unknowns            []string `json:"unknowns,omitempty"`
+	Provenance          []string `json:"provenance,omitempty"`
+}
+
+// EventHook is an explicit event dispatch around the target call.
+type EventHook struct {
+	Symbol string `json:"symbol"`
+	Phase  string `json:"phase"`
 }
 
 // FactoryPlan describes an explicit C++ object construction/destruction path.
@@ -112,7 +120,8 @@ type FactoryPlan struct {
 	Symbol     string `json:"symbol"`
 	ClassType  string `json:"class_type"`
 	ReturnType string `json:"return_type"`
-	Style      string `json:"style"` // value, pointer, unique_ptr, shared_ptr
+	Style      string `json:"style"` // value, reference, pointer, unique_ptr, shared_ptr
+	Lifetime   string `json:"lifetime,omitempty"`
 	Destroy    string `json:"destroy,omitempty"`
 }
 
@@ -125,6 +134,9 @@ type AdapterBinding struct {
 	Prototype         string   `json:"prototype"`
 	Model             string   `json:"model"`
 	Effects           []string `json:"effects,omitempty"`
+	EventModel        string   `json:"event_model,omitempty"`
+	Completion        string   `json:"completion,omitempty"`
+	Ownership         string   `json:"ownership,omitempty"`
 	Limitations       []string `json:"limitations,omitempty"`
 }
 
@@ -165,6 +177,7 @@ type TargetPlan struct {
 	Wrapper        *WrapperPlan       `json:"wrapper,omitempty"`
 	Factory        *FactoryPlan       `json:"factory,omitempty"`
 	IsStaticMethod bool               `json:"is_static_method,omitempty"`
+	Events         []EventHook        `json:"events,omitempty"`
 	Function       *analyzer.Function `json:"-"`
 }
 

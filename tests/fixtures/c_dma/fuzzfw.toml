@@ -1,0 +1,30 @@
+schema_version = 1
+
+[project]
+name = "c-dma-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "dma_process"
+symbol = "dma_process"
+source = "src/dma.c"
+header = "include/dma.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 64
+seeds = ["seeds"]
+
+[[targets.events]]
+symbol = "dma_event_flush"
+phase = "before"
+
+[[adapters]]
+original_symbol = "DMA_Read"
+replacement_source = "tests/fuzzfw/adapters/dma.c"
+contract = "tests/fuzzfw/contracts/dma.json"

@@ -116,7 +116,7 @@ limit, not a guessed parser rule.
 | G4 reachability | coverage callback sees entry symbol | `E_ENTRY_UNREACHED` |
 | G5 input use | IR read/call evidence or coverage sensitivity | warning/unknown |
 | G6 context | explicit setup/teardown/wrapper provenance | adaptable |
-| G7 stability | repeated isolated coverage/exit | `E_STATE_LEAK` |
+| G7 stability | repeated isolated coverage/exit and same-process persistent reset probe | `E_STATE_LEAK` |
 | G8 reproduction | independent replay attempts | `flaky`/`non_reproducing` |
 
 Coverage equality alone is not proof that input was ignored; G5 records
@@ -173,6 +173,47 @@ Factory class, return type, staticness, and destroy pointer argument are checked
 against the AST. A raw-pointer factory without `destroy` is blocked. A
 non-static member factory, reference return, or mismatched class is blocked. If
 the factory cannot be proven, use the user wrapper path.
+
+## Event models (DMA / ISR / RTOS)
+
+Event boundaries are not simulated by an arbitrary scheduler. The target must
+use an approved adapter contract and, where needed, explicit event hooks:
+
+```toml
+[[targets]]
+name = "dma_process"
+symbol = "dma_process"
+header = "include/dma.h"
+
+[[targets.events]]
+symbol = "dma_event_flush"
+phase = "before"
+```
+
+```json
+{
+  "event_model": "dma_completion",
+  "completion": "deferred",
+  "ownership": "caller"
+}
+```
+
+The generated harness binds a read-only input stream before the target, calls
+`before` hooks, invokes the target, calls `after` hooks, and clears the stream.
+Adapters read bytes with `fuzzfw_input_read()`. DMA requires
+`event_model=dma_completion`; deferred completion requires at least one event
+hook. ISR requires an `isr_callback` adapter or event hook. RTOS requires an
+`rtos_event` adapter and event hook. Direct MMIO and inline assembly remain
+blocked. No real interrupt timing, scheduler, or DMA engine is claimed.
+
+## Persistent reset
+
+Before a target is allowed into a persistent engine run, the self-test repeats
+one non-empty input three times **inside the same process**. The first call is
+allowed to perform one-time initialization; the warm calls must have identical
+coverage and entry-hit results. Any difference reports `E_STATE_LEAK` and keeps
+the target out of `fuzzable` state. This catches static counters/state that
+would contaminate coverage and findings.
 
 ## Explicit wrapper escape hatch
 

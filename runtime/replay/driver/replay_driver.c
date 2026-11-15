@@ -130,19 +130,40 @@ static void json_string(FILE *out, const char *value) {
     fputc('"', out);
 }
 
-static int write_report(const char *path, const char *symbol, int hit, size_t input_size) {
+static void coverage_reset(void) {
+    if (g_seen != NULL && g_guards_total > 0u) {
+        memset(g_seen, 0, (size_t)g_guards_total + 1u);
+    }
+    g_guards_hit = 0;
+    g_coverage_hash = 1469598103934665603ULL;
+    memset(g_pc_table, 0, sizeof(g_pc_table));
+    g_pc_count = 0;
+}
+
+static int write_report(const char *path, const char *symbol, int hit, size_t input_size,
+                        const uint64_t *hashes, const uint32_t *guard_hits,
+                        const int *entry_hits, int iterations) {
     FILE *out = fopen(path, "w");
     if (out == NULL) {
         fprintf(stderr, "fuzzfw replay: cannot write report %s: %s\n", path, strerror(errno));
         return -1;
     }
     fprintf(out, "{\"schema_version\":1,\"input_size\":%zu,", input_size);
-    fprintf(out, "\"guards_total\":%u,\"guards_hit\":%u,", g_guards_total, g_guards_hit);
-    fprintf(out, "\"coverage_hash\":\"%016" PRIx64 "\",", g_coverage_hash);
+    fprintf(out, "\"guards_total\":%u,\"guards_hit\":%u,", g_guards_total,
+            iterations > 0 ? guard_hits[0] : g_guards_hit);
+    fprintf(out, "\"coverage_hash\":\"%016" PRIx64 "\",", iterations > 0 ? hashes[0] : g_coverage_hash);
     fprintf(out, "\"entry_symbol\":");
     json_string(out, symbol == NULL ? "" : symbol);
-    if (hit < 0) fprintf(out, ",\"entry_hit\":null}\n");
-    else fprintf(out, ",\"entry_hit\":%s}\n", hit ? "true" : "false");
+    if (hit < 0) fprintf(out, ",\"entry_hit\":null");
+    else fprintf(out, ",\"entry_hit\":%s", hit ? "true" : "false");
+    fprintf(out, ",\"iterations\":[");
+    for (int i = 0; i < iterations; i++) {
+        if (i > 0) fputc(',', out);
+        fprintf(out, "{\"iteration\":%d,\"coverage_hash\":\"%016" PRIx64 "\",\"guards_hit\":%u,\"entry_hit\":%s}",
+                i + 1, hashes[i], guard_hits[i],
+                entry_hits[i] < 0 ? "null" : (entry_hits[i] ? "true" : "false"));
+    }
+    fprintf(out, "]}\n");
     fclose(out);
     return 0;
 }
@@ -151,6 +172,7 @@ int main(int argc, char **argv) {
     const char *input_path = NULL;
     const char *report_path = NULL;
     const char *entry_symbol = "";
+    int iterations = 1;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--input") == 0 && i + 1 < argc) {
             input_path = argv[++i];
@@ -158,6 +180,14 @@ int main(int argc, char **argv) {
             report_path = argv[++i];
         } else if (strcmp(argv[i], "--entry-symbol") == 0 && i + 1 < argc) {
             entry_symbol = argv[++i];
+        } else if (strcmp(argv[i], "--iterations") == 0 && i + 1 < argc) {
+            char *end = NULL;
+            long value = strtol(argv[++i], &end, 10);
+            if (end == argv[i] || *end != '\0' || value < 1 || value > 10000) {
+                fprintf(stderr, "fuzzfw replay: invalid --iterations\n");
+                return 2;
+            }
+            iterations = (int)value;
         } else {
             fprintf(stderr, "fuzzfw replay: unknown argument %s\n", argv[i]);
             return 2;
@@ -173,10 +203,26 @@ int main(int argc, char **argv) {
     if (size == 0) {
         data[0] = 0;
     }
-    int rc = LLVMFuzzerTestOneInput(data, size);
-    (void)rc;
-    int hit = entry_hit(entry_symbol);
-    int report_rc = write_report(report_path, entry_symbol, hit, size);
-    free(data);
+    uint64_t *hashes = (uint64_t *)calloc((size_t)iterations, sizeof(uint64_t));
+    uint32_t *guard_hits = (uint32_t *)calloc((size_t)iterations, sizeof(uint32_t));
+    int *entry_hits = (int *)calloc((size_t)iterations, sizeof(int));
+    if (hashes == NULL || guard_hits == NULL || entry_hits == NULL) {
+        free(hashes); free(guard_hits); free(entry_hits); free(data);
+        return 2;
+    }
+    int final_hit = -1;
+    for (int iteration = 0; iteration < iterations; iteration++) {
+        coverage_reset();
+        int rc = LLVMFuzzerTestOneInput(data, size);
+        (void)rc;
+        hashes[iteration] = g_coverage_hash;
+        guard_hits[iteration] = g_guards_hit;
+        entry_hits[iteration] = entry_hit(entry_symbol);
+        if (iteration == 0)
+            final_hit = entry_hits[iteration];
+    }
+    int report_rc = write_report(report_path, entry_symbol, final_hit, size,
+                                 hashes, guard_hits, entry_hits, iterations);
+    free(hashes); free(guard_hits); free(entry_hits); free(data);
     return report_rc == 0 ? 0 : 2;
 }

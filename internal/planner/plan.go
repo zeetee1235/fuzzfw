@@ -175,11 +175,23 @@ func functionTargetPlan(
 		tp.Header = fsutil.Rel(cfg.Root, target.Header)
 	}
 	tp.Seeds = expandSeeds(cfg.Root, target.Seeds)
+	for _, event := range target.Events {
+		tp.Events = append(tp.Events, EventHook{Symbol: event.Symbol, Phase: event.Phase})
+		if !hasVoidFunction(analysis, event.Symbol) {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "event hook lacks a visible void(void) declaration: "+event.Symbol)
+			tp.Diagnostics = append(tp.Diagnostics, diag.Newf(diag.EContextInvalid,
+				"event hook %s must have a visible void(void) declaration", event.Symbol,
+			).WithTarget(target.Name))
+		}
+	}
 	tp.Platform.HostTriple, tp.Platform.TargetTriple = variantTriples(analysis, fn.VariantID)
 	if fact != nil {
 		tp.Analysis.IR = "observed"
 		tp.Analysis.Provenance = append(tp.Analysis.Provenance, "llvm_ir")
 		tp.Analysis.IRDataDependent = fact.DataDependent
+		tp.Analysis.IRAliasFacts = append(tp.Analysis.IRAliasFacts, fact.AliasFacts...)
+		tp.Analysis.IRMemorySSAAccesses = fact.MemorySSAAccesses
 		tp.Analysis.Unknowns = append(tp.Analysis.Unknowns, fact.Unknowns...)
 		copy := *fn
 		copy.HardwareFlags = uniqueSorted(append(append([]string{}, copy.HardwareFlags...), fact.HardwareFlags...))
@@ -277,7 +289,7 @@ func functionTargetPlan(
 		}
 	}
 
-	deps := resolveDependencies(cfg, analysis, fn, irFlagsByFunction, adapterCache, adapterErrors)
+	deps := resolveDependencies(cfg, analysis, fn, irFlagsByFunction, adapterCache, adapterErrors, len(tp.Events))
 	tp.Dependencies = deps.translationUnits
 	tp.Adapters = deps.adapters
 	tp.Diagnostics = append(tp.Diagnostics, deps.diagnostics...)
@@ -350,6 +362,16 @@ func wrapperTargetPlan(cfg *config.Config, analysis *analyzer.Analysis, target c
 		Reasons: []string{"explicit user wrapper preserves original code; build and self-test gates still apply"},
 	}
 	tp.Seeds = expandSeeds(cfg.Root, target.Seeds)
+	for _, event := range target.Events {
+		tp.Events = append(tp.Events, EventHook{Symbol: event.Symbol, Phase: event.Phase})
+		if !hasVoidFunction(analysis, event.Symbol) {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "event hook lacks a visible void(void) declaration: "+event.Symbol)
+			tp.Diagnostics = append(tp.Diagnostics, diag.Newf(diag.EContextInvalid,
+				"event hook %s must have a visible void(void) declaration", event.Symbol,
+			).WithTarget(target.Name))
+		}
+	}
 	tp.Constraints = []Constraint{{
 		Expr: fmt.Sprintf("size <= %d", tp.MaxInputBytes), Basis: "configured_engine_limit",
 		Evidence: []string{"harness.max_input_bytes"},
@@ -441,6 +463,7 @@ func resolveDependencies(
 	irFlagsByFunction map[string][]string,
 	adapterCache map[string]AdapterBinding,
 	adapterErrors map[string]diag.Diagnostic,
+	eventCount int,
 ) dependencyResult {
 	result := dependencyResult{}
 	byTU := map[string]map[string][]*analyzer.Function{}
@@ -555,17 +578,10 @@ func resolveDependencies(
 			).WithTarget(rootFn.Name))
 		}
 	}
-	if flags["MMIO_DIRECT"] || flags["ARCH_ASM"] || flags["DMA_ASYNC"] || flags["ISR_ENTRY"] || flags["RTOS_CONTEXT"] {
-		result.blocked = true
-		for _, flag := range []string{"MMIO_DIRECT", "ARCH_ASM", "DMA_ASYNC", "ISR_ENTRY", "RTOS_CONTEXT"} {
-			if flags[flag] {
-				result.reasons = append(result.reasons, "hardware dependency: "+flag)
-			}
-		}
-		result.diagnostics = append(result.diagnostics, diag.New(diag.EHALUnmodeled,
-			"target dependency path crosses a direct hardware/RTOS boundary",
-		).WithTarget(rootFn.Name))
-	}
+	blocked, reasons, diagnostics := evaluateHardwareBoundaries(flags, result.adapters, eventCount)
+	result.blocked = result.blocked || blocked
+	result.reasons = append(result.reasons, reasons...)
+	result.diagnostics = append(result.diagnostics, diagnostics...)
 	if flags["INDIRECT_UNKNOWN"] {
 		result.adaptable = true
 		result.reasons = append(result.reasons, "indirect call target cannot be resolved statically")
@@ -760,4 +776,69 @@ func hasVoidFunction(analysis *analyzer.Analysis, name string) bool {
 		}
 	}
 	return false
+}
+
+func adapterByEventModel(adapters []AdapterBinding, model string) (AdapterBinding, bool) {
+	for _, adapter := range adapters {
+		if adapter.EventModel == model {
+			return adapter, true
+		}
+	}
+	return AdapterBinding{}, false
+}
+
+func evaluateHardwareBoundaries(flags map[string]bool, adapters []AdapterBinding, eventCount int) (bool, []string, []diag.Diagnostic) {
+	blocked := false
+	var reasons []string
+	var diagnostics []diag.Diagnostic
+	if flags["MMIO_DIRECT"] || flags["ARCH_ASM"] {
+		blocked = true
+		for _, flag := range []string{"MMIO_DIRECT", "ARCH_ASM"} {
+			if flags[flag] {
+				reasons = append(reasons, "hardware dependency: "+flag)
+			}
+		}
+		diagnostics = append(diagnostics, diag.New(diag.EHALUnmodeled,
+			"target dependency path crosses a direct MMIO/inline-assembly boundary",
+		))
+	}
+	if flags["DMA_ASYNC"] {
+		dmaAdapter, ok := adapterByEventModel(adapters, "dma_completion")
+		switch {
+		case !ok:
+			blocked = true
+			reasons = append(reasons, "DMA path has no adapter with event_model=dma_completion")
+			diagnostics = append(diagnostics, diag.New(diag.EDMAUnmodeled,
+				"DMA transfer is not modeled by an approved adapter contract"))
+		case dmaAdapter.Completion == "deferred" && eventCount == 0:
+			blocked = true
+			diagnostics = append(diagnostics, diag.New(diag.EDMAUnmodeled,
+				"deferred DMA completion requires at least one explicit event hook"))
+		default:
+			reasons = append(reasons, "DMA boundary modeled by "+dmaAdapter.OriginalSymbol)
+		}
+	}
+	if flags["ISR_ENTRY"] {
+		_, isrAdapter := adapterByEventModel(adapters, "isr_callback")
+		if !isrAdapter && eventCount == 0 {
+			blocked = true
+			reasons = append(reasons, "ISR path has no adapter event model or explicit event hook")
+			diagnostics = append(diagnostics, diag.New(diag.EHALUnmodeled,
+				"ISR callback path requires an approved event adapter or explicit event hook"))
+		} else {
+			reasons = append(reasons, "ISR boundary has an explicit event model")
+		}
+	}
+	if flags["RTOS_CONTEXT"] {
+		_, rtosAdapter := adapterByEventModel(adapters, "rtos_event")
+		if !rtosAdapter || eventCount == 0 {
+			blocked = true
+			reasons = append(reasons, "RTOS path requires an rtos_event adapter and explicit event hooks")
+			diagnostics = append(diagnostics, diag.New(diag.EContextUnknown,
+				"RTOS/scheduler dependency requires an approved host event model and event hooks"))
+		} else {
+			reasons = append(reasons, "RTOS boundary has an explicit event model")
+		}
+	}
+	return blocked, reasons, diagnostics
 }

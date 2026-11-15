@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "original_symbol": "HAL_ISR_Read",
+  "prototype": "int(uint8_t *, size_t)",
+  "model": "status_and_output",
+  "effects": ["write_buffer", "return_status"],
+  "max_write": "requested",
+  "valid_context": "host ISR event adapter",
+  "nondeterminism": "none",
+  "event_model": "isr_callback",
+  "completion": "synchronous",
+  "ownership": "caller",
+  "limitations": ["no real interrupt timing"]
+}

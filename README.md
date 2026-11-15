@@ -156,12 +156,20 @@ See [configuration](docs/reference/configuration.md) and
 - libFuzzer and honggfuzz adapters end-to-end tested.
 - IR loop-bound/data-dependence evidence and compare-constant facts.
 - Finding minimization and baseline bootstrap.
+- Persistent reset probe: identical input repeated in one process must produce
+  identical coverage; otherwise `E_STATE_LEAK`.
+- Approved DMA/ISR/RTOS event models with an adapter-visible input stream and
+  explicit before/after event hooks.
+- Native AA/MemorySSA evidence: pointer alias facts and memory-access counts,
+  plus loop-bound and compare-constant facts.
+- C++ reference-returning factories with explicit external-lifetime review.
 
 ## Not yet
 
-- Arbitrary C++ constructors, object graphs, and reference-returning factories.
-- DMA/ISR/RTOS event models and persistent mode.
-- New PM AA/MemorySSA-assisted IR analysis.
+- Arbitrary C++ constructors and automatic object-graph synthesis; complex
+  graphs must go through an explicit factory or wrapper.
+- Full RTOS scheduler emulation; only approved event adapters/hooks are supported.
+- Whole-program points-to analysis and deeper interprocedural alias reasoning.
 - Existing unit-test context extraction.
 - Multi-target parallel scheduling.
 - honggfuzz validation across a wider release matrix.

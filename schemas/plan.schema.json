@@ -48,6 +48,7 @@
           "analysis": {"type": "object"},
           "factory": {"type": "object"},
           "is_static_method": {"type": "boolean"},
+          "events": {"type": "array"},
           "adapters": {"type": "array"},
           "required_translation_units": {"type": "array", "items": {"type": "string"}},
           "reasons": {"type": "array", "items": {"type": "string"}},

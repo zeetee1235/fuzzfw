@@ -147,22 +147,25 @@ type Declaration struct {
 
 // IRFunctionFact is the joinable LLVM IR summary for one function.
 type IRFunctionFact struct {
-	SchemaVersion int          `json:"schema_version"`
-	FunctionID    string       `json:"function_id,omitempty"`
-	LinkSymbol    string       `json:"link_symbol"`
-	TargetTriple  string       `json:"target_triple,omitempty"`
-	HostTriple    string       `json:"host_triple,omitempty"`
-	IRMapping     string       `json:"ir_mapping"`
-	Arguments     []IRArgument `json:"arguments,omitempty"`
-	GlobalEffects []string     `json:"global_effects,omitempty"`
-	HardwareFlags []string     `json:"hardware_flags,omitempty"`
-	Unknowns      []string     `json:"unknowns,omitempty"`
-	Evidence      []Evidence   `json:"evidence,omitempty"`
-	BranchCount   int          `json:"branch_count,omitempty"`
-	LoadCount     int          `json:"load_count,omitempty"`
-	StoreCount    int          `json:"store_count,omitempty"`
-	IndirectCalls int          `json:"indirect_calls,omitempty"`
-	DataDependent bool         `json:"data_dependent,omitempty"`
+	SchemaVersion     int          `json:"schema_version"`
+	FunctionID        string       `json:"function_id,omitempty"`
+	LinkSymbol        string       `json:"link_symbol"`
+	TargetTriple      string       `json:"target_triple,omitempty"`
+	HostTriple        string       `json:"host_triple,omitempty"`
+	IRMapping         string       `json:"ir_mapping"`
+	Arguments         []IRArgument `json:"arguments,omitempty"`
+	GlobalEffects     []string     `json:"global_effects,omitempty"`
+	HardwareFlags     []string     `json:"hardware_flags,omitempty"`
+	Unknowns          []string     `json:"unknowns,omitempty"`
+	AliasFacts        []string     `json:"alias_facts,omitempty"`
+	MemorySSAAccesses int          `json:"memory_ssa_accesses,omitempty"`
+	Evidence          []Evidence   `json:"evidence,omitempty"`
+	BranchCount       int          `json:"branch_count,omitempty"`
+	LoadCount         int          `json:"load_count,omitempty"`
+	StoreCount        int          `json:"store_count,omitempty"`
+	IndirectCalls     int          `json:"indirect_calls,omitempty"`
+	VolatileAccesses  int          `json:"volatile_accesses,omitempty"`
+	DataDependent     bool         `json:"data_dependent,omitempty"`
 }
 
 // IRArgument is one argument's observed IR uses.

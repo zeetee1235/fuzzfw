@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "findings": [
+    {
+      "fingerprint": "7050a5bc32a611ca0d5cec719a48775eb69116974d30ea14abde3a693549fba3",
+      "id": "F7050A5BC",
+      "target": "parse_packet",
+      "kind": "address:heap-buffer-overflow",
+      "origin": "target_crash"
+    }
+  ]
+}

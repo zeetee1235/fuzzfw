@@ -39,13 +39,22 @@ type BuildDelta struct {
 
 // ReplayReport is the JSON emitted by the native replay driver.
 type ReplayReport struct {
-	SchemaVersion int    `json:"schema_version"`
-	InputSize     int    `json:"input_size"`
-	GuardsTotal   int    `json:"guards_total"`
-	GuardsHit     int    `json:"guards_hit"`
-	CoverageHash  string `json:"coverage_hash"`
-	EntrySymbol   string `json:"entry_symbol"`
-	EntryHit      *bool  `json:"entry_hit"`
+	SchemaVersion int               `json:"schema_version"`
+	InputSize     int               `json:"input_size"`
+	GuardsTotal   int               `json:"guards_total"`
+	GuardsHit     int               `json:"guards_hit"`
+	CoverageHash  string            `json:"coverage_hash"`
+	EntrySymbol   string            `json:"entry_symbol"`
+	EntryHit      *bool             `json:"entry_hit"`
+	Iterations    []ReplayIteration `json:"iterations,omitempty"`
+}
+
+// ReplayIteration is one repeated invocation inside the same process.
+type ReplayIteration struct {
+	Iteration    int    `json:"iteration"`
+	CoverageHash string `json:"coverage_hash"`
+	GuardsHit    int    `json:"guards_hit"`
+	EntryHit     *bool  `json:"entry_hit"`
 }
 
 // CaseResult is one self-test case.
@@ -65,15 +74,18 @@ type CaseResult struct {
 
 // Selftest is the aggregate of all self-test cases.
 type Selftest struct {
-	Cases            []CaseResult `json:"cases"`
-	DurationSeconds  float64      `json:"duration_seconds"`
-	EntryHit         bool         `json:"entry_hit"`
-	EntryUnknown     bool         `json:"entry_unknown"`
-	Stable           bool         `json:"stable"`
-	InputUse         string       `json:"input_use"` // observed, weak_sensitivity, unknown
-	DistinctCoverage int          `json:"distinct_coverage"`
-	CrashCount       int          `json:"crash_count"`
-	CoverageHashes   []string     `json:"coverage_hashes,omitempty"`
+	Cases             []CaseResult `json:"cases"`
+	DurationSeconds   float64      `json:"duration_seconds"`
+	EntryHit          bool         `json:"entry_hit"`
+	EntryUnknown      bool         `json:"entry_unknown"`
+	PersistentChecked bool         `json:"persistent_checked"`
+	PersistentStable  bool         `json:"persistent_stable"`
+	PersistentHashes  []string     `json:"persistent_hashes,omitempty"`
+	Stable            bool         `json:"stable"`
+	InputUse          string       `json:"input_use"` // observed, weak_sensitivity, unknown
+	DistinctCoverage  int          `json:"distinct_coverage"`
+	CrashCount        int          `json:"crash_count"`
+	CoverageHashes    []string     `json:"coverage_hashes,omitempty"`
 }
 
 // Result is the build artifact and self-test record for one target.

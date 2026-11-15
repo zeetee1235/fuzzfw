@@ -34,12 +34,13 @@ type irInstruction struct {
 }
 
 type irFunction struct {
-	symbol        string
-	argValues     []string
-	argTypes      []string
-	instructions  []irInstruction
-	labels        map[string]int
-	indirectCalls int
+	symbol           string
+	argValues        []string
+	argTypes         []string
+	instructions     []irInstruction
+	labels           map[string]int
+	indirectCalls    int
+	volatileAccesses int
 }
 
 type irModule struct {
@@ -371,7 +372,7 @@ func summarizeIR(fn *irFunction, module *irModule, variant Variant, hostTriple s
 					}
 				}
 				if strings.Contains(inst.rhs, "volatile") {
-					flags["MMIO_DIRECT"] = true
+					fn.volatileAccesses++
 				}
 				markGlobalEffects(inst.rhs, module.globals, globalEffects, "write")
 			case "load":
@@ -387,7 +388,7 @@ func summarizeIR(fn *irFunction, module *irModule, variant Variant, hostTriple s
 					}
 				}
 				if strings.Contains(inst.rhs, "volatile") {
-					flags["MMIO_DIRECT"] = true
+					fn.volatileAccesses++
 				}
 				markGlobalEffects(inst.rhs, module.globals, globalEffects, "read")
 			case "getelementptr":
@@ -493,6 +494,7 @@ func summarizeIR(fn *irFunction, module *irModule, variant Variant, hostTriple s
 		}
 	}
 	fact.IndirectCalls = fn.indirectCalls
+	fact.VolatileAccesses = fn.volatileAccesses
 	for _, use := range uses {
 		if use["branch"] || use["compare"] || use["indexed"] || use["memory_read"] || use["loop_bound"] {
 			fact.DataDependent = true

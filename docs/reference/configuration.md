@@ -70,6 +70,7 @@ definitions, include paths, forced includes, and standards are preserved.
 | `minimize` | `true` | Delta-debug reproduced inputs. |
 | `min_input_bytes` | `0` | Minimum size retained by minimization. |
 | `preserve_nonnull_on_empty` | `true` | Mutable buffers allocate one byte when input size is zero. |
+| `persistent_reset_check` | `true` | Repeat the same input inside one process and require identical coverage before persistent execution is allowed. |
 
 ## `[ci]`
 
@@ -100,7 +101,8 @@ definitions, include paths, forced includes, and standards are preserved.
 | `max_input_bytes` | harness default | Per-target cap; must not exceed the global cap (0 inherits). |
 | `setup` | unset | Explicit setup function called before the target. Must be declared by the included header. |
 | `teardown` | unset | Explicit teardown function called after the target. |
-| `factory` | unset | Explicit C++ factory symbol for a member function target. Value, raw pointer, `std::unique_ptr`, and `std::shared_ptr` returns are recognized. |
+| `factory` | unset | Explicit C++ factory symbol for a member function target. Value, reference, raw pointer, `std::unique_ptr`, and `std::shared_ptr` returns are recognized. |
+| `factory_lifetime` | unset | Must be `external` for a reference-returning factory; no automatic destruction is emitted. |
 | `destroy` | unset | Required when `factory` returns a raw pointer; must take the object pointer. |
 | `wrapper_symbol` | unset | User wrapper entry symbol; must be set with `wrapper_source`. |
 | `wrapper_source` | unset | User wrapper source compiled into the host build. |
@@ -161,7 +163,26 @@ Adapter contract:
 ```
 
 The contract prototype is checked against the project declaration when one is
-available. Unrecognized models/effects/contexts fail planning. The Adapter does
+available. Unrecognized models/effects/contexts/event models fail planning.
+Event contracts may additionally declare:
+
+| Contract key | Meaning |
+|---|---|
+| `event_model` | `none`, `uart_rx`, `dma_completion`, `isr_callback`, or `rtos_event`. |
+| `completion` | `synchronous` or `deferred`. Deferred DMA requires an explicit event hook. |
+| `ownership` | `caller`, `adapter`, or `shared`; DMA buffer ownership must be explicit. |
+
+Adapters can consume the fuzz input stream through `fuzzfw_events.h`:
+
+```c
+size_t fuzzfw_input_read(void *dst, size_t requested);
+size_t fuzzfw_input_remaining(void);
+const uint8_t *fuzzfw_input_peek(size_t *available);
+```
+
+Target event hooks are declared in the included header with `void hook(void)`.
+They run before or after the target call; the input stream is reset for every
+process/iteration by the generated harness. The Adapter does
 not make a target fuzzable until build and self-test gates pass.
 
 ## Complete example
@@ -202,6 +223,10 @@ header = "include/sensor.h"
 required = true
 max_input_bytes = 4096
 seeds = ["tests/fuzzfw/seeds"]
+
+[[targets.events]]
+symbol = "dma_event_flush"
+phase = "before"       # before or after the target call
 
 [[adapters]]
 original_symbol = "HAL_UART_Receive"

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "original_symbol": "xTaskNotifyWait",
+  "prototype": "int(uint8_t *, size_t)",
+  "model": "status_and_output",
+  "effects": ["write_buffer", "return_status"],
+  "max_write": "requested",
+  "valid_context": "host RTOS event adapter",
+  "nondeterminism": "none",
+  "event_model": "rtos_event",
+  "completion": "deferred",
+  "ownership": "caller",
+  "limitations": ["no real scheduler", "single ready event"]
+}

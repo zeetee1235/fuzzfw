@@ -83,6 +83,7 @@ type Harness struct {
 	Minimize              bool `toml:"minimize"`
 	MinInputBytes         int  `toml:"min_input_bytes"`
 	PreserveNonNilOnEmpty bool `toml:"preserve_nonnull_on_empty"`
+	PersistentResetCheck  bool `toml:"persistent_reset_check"`
 }
 
 // CI controls the check/fuzz gate.
@@ -102,22 +103,30 @@ type CI struct {
 
 // Target is a user-declared fuzz target or an explicit wrapper escape hatch.
 type Target struct {
-	Name          string   `toml:"name"`
-	Symbol        string   `toml:"symbol"`
-	Source        string   `toml:"source"`
-	Header        string   `toml:"header"`
-	Required      bool     `toml:"required"`
-	Input         string   `toml:"input"`
-	MaxInputBytes int      `toml:"max_input_bytes"`
-	Setup         string   `toml:"setup"`
-	Teardown      string   `toml:"teardown"`
-	Factory       string   `toml:"factory"`
-	Destroy       string   `toml:"destroy"`
-	WrapperSymbol string   `toml:"wrapper_symbol"`
-	WrapperSource string   `toml:"wrapper_source"`
-	Seeds         []string `toml:"seeds"`
-	Args          []string `toml:"args"`
-	BuildVariant  string   `toml:"build_variant"`
+	Name            string            `toml:"name"`
+	Symbol          string            `toml:"symbol"`
+	Source          string            `toml:"source"`
+	Header          string            `toml:"header"`
+	Required        bool              `toml:"required"`
+	Input           string            `toml:"input"`
+	MaxInputBytes   int               `toml:"max_input_bytes"`
+	Setup           string            `toml:"setup"`
+	Teardown        string            `toml:"teardown"`
+	Factory         string            `toml:"factory"`
+	FactoryLifetime string            `toml:"factory_lifetime"`
+	Destroy         string            `toml:"destroy"`
+	WrapperSymbol   string            `toml:"wrapper_symbol"`
+	WrapperSource   string            `toml:"wrapper_source"`
+	Seeds           []string          `toml:"seeds"`
+	Args            []string          `toml:"args"`
+	BuildVariant    string            `toml:"build_variant"`
+	Events          []EventHookConfig `toml:"events"`
+}
+
+// EventHookConfig is an explicit event dispatch around the target call.
+type EventHookConfig struct {
+	Symbol string `toml:"symbol"`
+	Phase  string `toml:"phase"` // before or after
 }
 
 // Adapter is an approved replacement for an external hardware symbol.
@@ -171,6 +180,7 @@ func Defaults() File {
 			ReproductionAttempts:  3,
 			Minimize:              true,
 			PreserveNonNilOnEmpty: true,
+			PersistentResetCheck:  true,
 		},
 		CI: CI{
 			Mode:                "pr",

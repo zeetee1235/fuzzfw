@@ -49,6 +49,7 @@ bad:
 ok:
   %idx = getelementptr inbounds i8, ptr %data, i64 0
   %byte = load volatile i8, ptr %idx
+  %mmio = inttoptr i64 268435456 to ptr
   store i32 1, ptr @g_state
   %out = call i32 @external_helper(ptr %data)
   ret i32 %out
@@ -77,7 +78,10 @@ declare i32 @external_helper(ptr)
 		t.Fatalf("arg1 lacks compare-constant evidence: %#v", arg1)
 	}
 	if !containsString(fact.HardwareFlags, "MMIO_DIRECT") {
-		t.Fatalf("hardware flags = %#v", fact.HardwareFlags)
+		t.Fatalf("inttoptr MMIO flag missing: %#v", fact.HardwareFlags)
+	}
+	if fact.VolatileAccesses == 0 {
+		t.Fatalf("volatile access was not counted")
 	}
 	if !containsString(fact.GlobalEffects, "write:g_state") {
 		t.Fatalf("global effects = %#v", fact.GlobalEffects)

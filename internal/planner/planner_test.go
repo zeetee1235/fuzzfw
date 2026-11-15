@@ -197,3 +197,24 @@ func TestFactoryClassMismatchBlocked(t *testing.T) {
 		t.Fatalf("plan=%+v diagnostics=%+v", plan, diagnostics)
 	}
 }
+
+func TestHardwareBoundaryModels(t *testing.T) {
+	dma := []AdapterBinding{{OriginalSymbol: "DMA_Read", EventModel: "dma_completion", Completion: "deferred"}}
+	blocked, _, diags := evaluateHardwareBoundaries(map[string]bool{"DMA_ASYNC": true}, dma, 0)
+	if !blocked || len(diags) == 0 || diags[0].Code != "E_DMA_UNMODELED" {
+		t.Fatalf("deferred DMA without events: blocked=%v diags=%+v", blocked, diags)
+	}
+	blocked, _, diags = evaluateHardwareBoundaries(map[string]bool{"DMA_ASYNC": true}, dma, 1)
+	if blocked || len(diags) != 0 {
+		t.Fatalf("modeled DMA with events: blocked=%v diags=%+v", blocked, diags)
+	}
+	blocked, _, _ = evaluateHardwareBoundaries(map[string]bool{"RTOS_CONTEXT": true}, nil, 1)
+	if !blocked {
+		t.Fatal("RTOS without adapter should be blocked")
+	}
+	rtos := []AdapterBinding{{OriginalSymbol: "osEvent", EventModel: "rtos_event"}}
+	blocked, _, _ = evaluateHardwareBoundaries(map[string]bool{"RTOS_CONTEXT": true}, rtos, 1)
+	if blocked {
+		t.Fatal("modeled RTOS event should not be blocked")
+	}
+}

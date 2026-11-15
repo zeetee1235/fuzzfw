@@ -27,6 +27,9 @@ type AdapterContract struct {
 	MaxWrite       string   `json:"max_write,omitempty"`
 	ValidContext   string   `json:"valid_context"`
 	Nondeterminism string   `json:"nondeterminism,omitempty"`
+	EventModel     string   `json:"event_model,omitempty"`
+	Completion     string   `json:"completion,omitempty"`
+	Ownership      string   `json:"ownership,omitempty"`
 	Limitations    []string `json:"limitations,omitempty"`
 }
 
@@ -42,6 +45,11 @@ var validModels = map[string]bool{
 
 var validNondeterminism = map[string]bool{
 	"none": true, "time": true, "random": true, "io": true, "unknown": true,
+}
+
+var validEventModels = map[string]bool{
+	"": true, "none": true, "uart_rx": true, "dma_completion": true,
+	"isr_callback": true, "rtos_event": true,
 }
 
 func loadAdapterBinding(cfg *config.Config, adapterConfig config.Adapter, analysis *analyzer.Analysis) (AdapterBinding, *diag.Diagnostic) {
@@ -141,6 +149,9 @@ func loadAdapterBinding(cfg *config.Config, adapterConfig config.Adapter, analys
 		Prototype:         contract.Prototype,
 		Model:             contract.Model,
 		Effects:           append([]string(nil), contract.Effects...),
+		EventModel:        contract.EventModel,
+		Completion:        contract.Completion,
+		Ownership:         contract.Ownership,
 		Limitations:       append([]string(nil), contract.Limitations...),
 	}, nil
 }

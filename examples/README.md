@@ -11,6 +11,9 @@ The fixtures under `tests/fixtures/` are the deterministic test matrix:
 - `c_hal` — approved status-only HAL adapter, expected check exit 0.
 - `cpp_parser` — C++17 free function in a namespace, expected check exit 0.
 - `c_wrapper` — explicit user wrapper escape hatch, expected check exit 0.
+- `c_dma`, `c_isr`, `c_rtos` — approved event-model adapters and hooks, expected check exit 0.
+- `c_state` — persistent reset leak, expected check exit 2.
+- `c_vuln` — unseeded vulnerable target for optional honggfuzz discovery tests.
 
 ```sh
 cd examples/simple-parser

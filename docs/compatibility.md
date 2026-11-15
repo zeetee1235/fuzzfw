@@ -20,12 +20,14 @@
 | C11/C17 free/static functions with bytes+length | Implemented. |
 | C++17 free functions/namespaces | Implemented. |
 | C++ class methods with explicit factory | Supported for value, raw pointer + destroy, `unique_ptr`, and `shared_ptr` returns. |
-| C++ constructors / arbitrary object graphs | Blocked; no guessed constructor arguments. |
+| C++ constructors / arbitrary object graphs | Blocked; explicit factory or wrapper required. |
+| C++ reference-returning factory | Supported only with `factory_lifetime = "external"`; no automatic destruction. |
 | C++ static member functions | Supported directly without a factory. |
 | `static` function in a non-header TU | Blocked; direct external linkage is impossible without source/build changes. |
 | `static inline` in a project header | Supported when a unique header is declared. |
 | Variadic functions | Blocked. |
-| Direct MMIO, inline asm, DMA, ISR, RTOS scheduler | Blocked in P0. |
+| Direct MMIO, inline asm | Blocked. |
+| DMA / ISR / RTOS scheduler | Explicit adapter event model + event hooks only; no real scheduling. |
 | Packed/bitfield layout-sensitive paths | `ABI_LAYOUT`; blocked when target/host triples differ. |
 
 ## Input boundaries
@@ -49,7 +51,7 @@
 | `replay` | Implemented and integration-tested; validates build/corpus without mutation. |
 | `libfuzzer` | Implemented and integration-tested with Clang. |
 | `honggfuzz` | Validated with upstream `hfuzz-clang`/`libhfuzz` persistent mode; wider version matrix still pending. |
-| Persistent target reset | Not yet; isolated execution is the default. |
+| Persistent target reset | Same-process coverage reset probe is mandatory by default; a leak reports `E_STATE_LEAK`. |
 
 ## ABI and findings
 

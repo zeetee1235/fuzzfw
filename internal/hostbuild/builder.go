@@ -16,6 +16,7 @@ import (
 	"github.com/fuzzfw/fuzzfw/internal/harness"
 	"github.com/fuzzfw/fuzzfw/internal/planner"
 	"github.com/fuzzfw/fuzzfw/internal/proc"
+	eventsruntime "github.com/fuzzfw/fuzzfw/runtime/events"
 	runtimereplay "github.com/fuzzfw/fuzzfw/runtime/replay"
 )
 
@@ -210,9 +211,21 @@ func (b *Builder) compileTarget(
 	var diagnostics []diag.Diagnostic
 	delta := BuildDelta{Compiler: profile.CompilerC}
 	objDir := filepath.Join(b.Workspace.TargetBuild(target.Name), "objects", profile.Name)
+	runtimeDir := filepath.Join(b.Workspace.TargetBuild(target.Name), "runtime")
 	if err := os.MkdirAll(objDir, 0o755); err != nil {
 		diagnostics = append(diagnostics, diag.Newf(diag.EInternal, "cannot create object dir: %v", err).WithTarget(target.Name))
 		return nil, delta, diagnostics, false
+	}
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		diagnostics = append(diagnostics, diag.Newf(diag.EInternal, "cannot create runtime dir: %v", err).WithTarget(target.Name))
+		return nil, delta, diagnostics, false
+	}
+	if err := fsutil.WriteFileAtomic(filepath.Join(runtimeDir, "fuzzfw_events.h"), eventsruntime.HeaderSource, 0o644); err != nil {
+		return nil, delta, []diag.Diagnostic{diag.Newf(diag.EInternal, "cannot write event header: %v", err).WithTarget(target.Name)}, false
+	}
+	eventsSource := filepath.Join(runtimeDir, "fuzzfw_events.c")
+	if err := fsutil.WriteFileAtomic(eventsSource, eventsruntime.Source, 0o644); err != nil {
+		return nil, delta, []diag.Diagnostic{diag.Newf(diag.EInternal, "cannot write event runtime: %v", err).WithTarget(target.Name)}, false
 	}
 
 	targetCommand, commandOK := b.commandForTarget(target)
@@ -226,8 +239,9 @@ func (b *Builder) compileTarget(
 			mergeDelta(&delta, commandDelta)
 			language = command.Language
 		} else {
-			flags = []string{"-I", b.Cfg.Root}
+			flags = []string{"-I", b.Cfg.Root, "-I", runtimeDir}
 		}
+		flags = append(flags, "-I", runtimeDir)
 		if commandOK && !ok && targetCommand.File != "" {
 			projectFlags, commandDelta := hostFlags(b.Cfg, targetCommand)
 			flags = projectFlags
@@ -244,7 +258,7 @@ func (b *Builder) compileTarget(
 
 	for _, adapter := range target.Adapters {
 		source := absJoin(b.Cfg.Root, adapter.ReplacementSource)
-		flags := append([]string{"-I", b.Cfg.Root}, b.defaultIncludeFlags(target)...)
+		flags := append([]string{"-I", b.Cfg.Root, "-I", runtimeDir}, b.defaultIncludeFlags(target)...)
 		language := "c"
 		if strings.HasSuffix(strings.ToLower(adapter.ReplacementSource), ".cpp") ||
 			strings.HasSuffix(strings.ToLower(adapter.ReplacementSource), ".cc") {
@@ -254,6 +268,7 @@ func (b *Builder) compileTarget(
 			var commandDelta BuildDelta
 			projectFlags, commandDelta := hostFlags(b.Cfg, targetCommand)
 			flags = append(projectFlags, b.defaultIncludeFlags(target)...)
+			flags = append(flags, "-I", runtimeDir)
 			mergeDelta(&delta, commandDelta)
 		}
 		object, d := b.compileOne(profile, language, source, flags, objDir, logFile)
@@ -266,12 +281,13 @@ func (b *Builder) compileTarget(
 	}
 	if target.Wrapper != nil {
 		wrapperSource := absJoin(b.Cfg.Root, target.Wrapper.Source)
-		flags := append([]string{"-I", b.Cfg.Root}, b.defaultIncludeFlags(target)...)
+		flags := append([]string{"-I", b.Cfg.Root, "-I", runtimeDir}, b.defaultIncludeFlags(target)...)
 		language := "c"
 		if commandOK {
 			var commandDelta BuildDelta
 			projectFlags, commandDelta := hostFlags(b.Cfg, targetCommand)
 			flags = append(projectFlags, b.defaultIncludeFlags(target)...)
+			flags = append(flags, "-I", runtimeDir)
 			mergeDelta(&delta, commandDelta)
 		}
 		if strings.HasSuffix(strings.ToLower(wrapperSource), ".cpp") ||
@@ -291,11 +307,12 @@ func (b *Builder) compileTarget(
 	if harnessLanguage != "c++" {
 		harnessLanguage = "c"
 	}
-	flags := append([]string{"-I", b.Cfg.Root}, b.defaultIncludeFlags(target)...)
+	flags := append([]string{"-I", b.Cfg.Root, "-I", runtimeDir}, b.defaultIncludeFlags(target)...)
 	if commandOK {
 		var commandDelta BuildDelta
 		projectFlags, commandDelta := hostFlags(b.Cfg, targetCommand)
 		flags = append(projectFlags, b.defaultIncludeFlags(target)...)
+		flags = append(flags, "-I", runtimeDir)
 		mergeDelta(&delta, commandDelta)
 	}
 	object, d := b.compileOne(profile, harnessLanguage, harnessPath, flags, objDir, logFile)
@@ -305,6 +322,16 @@ func (b *Builder) compileTarget(
 		return objects, delta, diagnostics, false
 	}
 	objects = append(objects, object)
+
+	eventProfile := profile
+	eventProfile.CompileFlags = withoutCoverage(profile.CompileFlags)
+	eventObject, eventDiag := b.compileOne(eventProfile, "c", eventsSource, []string{"-I", runtimeDir}, objDir, logFile)
+	if eventDiag != nil {
+		eventDiag.Target = target.Name
+		diagnostics = append(diagnostics, *eventDiag)
+		return objects, delta, diagnostics, false
+	}
+	objects = append(objects, eventObject)
 
 	if profile.NeedReplay {
 		driverSource := filepath.Join(objDir, "replay_driver.c")

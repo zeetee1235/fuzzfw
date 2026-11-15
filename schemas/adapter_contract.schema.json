@@ -20,6 +20,9 @@
     "max_write": {"type": "string"},
     "valid_context": {"type": "string", "minLength": 1},
     "nondeterminism": {"enum": ["none", "time", "random", "io", "unknown"]},
+    "event_model": {"enum": ["none", "uart_rx", "dma_completion", "isr_callback", "rtos_event"]},
+    "completion": {"enum": ["synchronous", "deferred"]},
+    "ownership": {"enum": ["caller", "adapter", "shared"]},
     "limitations": {"type": "array", "items": {"type": "string"}}
   }
 }

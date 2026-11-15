@@ -257,6 +257,65 @@ func TestNativeIRLoopBoundEvidence(t *testing.T) {
 	if !found {
 		t.Fatal("checksum_loop IR fact missing")
 	}
+	aliasFound := false
+	for _, raw := range analysis["ir_facts"].([]any) {
+		fact := raw.(map[string]any)
+		if fact["link_symbol"] != "compare_buffers" {
+			continue
+		}
+		aliasFound = true
+		if fact["memory_ssa_accesses"].(float64) == 0 {
+			t.Fatal("MemorySSA access count missing")
+		}
+		aliases := fact["alias_facts"].([]any)
+		hasNoAlias := false
+		for _, alias := range aliases {
+			if alias == "no_alias:0:1" {
+				hasNoAlias = true
+			}
+		}
+		if !hasNoAlias {
+			t.Fatalf("AA no_alias evidence missing: %v", aliases)
+		}
+	}
+	if !aliasFound {
+		t.Fatal("compare_buffers IR fact missing")
+	}
+}
+
+func TestDMAEventModelPasses(t *testing.T) {
+	project := fixture("c_dma")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("DMA event check exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["status"] != "selftest_passed" && target["status"] != "fuzzable" {
+		t.Fatalf("DMA target status = %v", target["status"])
+	}
+}
+
+func TestISREventModelPasses(t *testing.T) {
+	project := fixture("c_isr")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("ISR event check exit = %d\n%s", code, stderr)
+	}
+}
+
+func TestRTOSEventModelPasses(t *testing.T) {
+	project := fixture("c_rtos")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("RTOS event check exit = %d\n%s", code, stderr)
+	}
 }
 
 func TestCppObjectContextPasses(t *testing.T) {
@@ -273,6 +332,21 @@ func TestCppObjectContextPasses(t *testing.T) {
 		if target["status"] != "selftest_passed" && target["status"] != "fuzzable" {
 			t.Fatalf("target %v status = %v", target["name"], target["status"])
 		}
+	}
+}
+
+func TestPersistentResetLeakDetected(t *testing.T) {
+	project := fixture("c_state")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, _, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 2 {
+		t.Fatalf("stateful check exit = %d, want 2", code)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["status"] != "state_leak" {
+		t.Fatalf("status = %v", target["status"])
 	}
 }
 

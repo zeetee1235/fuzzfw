@@ -33,10 +33,33 @@ max_input_bytes = 128
 seeds = ["seeds"]
 
 [[targets]]
+name = "parser_feed_ref"
+symbol = "Parser::feed"
+source = "src/parser.cpp"
+header = "include/parser.hpp"
+factory = "Parser::create_ref"
+factory_lifetime = "external"
+required = true
+input = "bytes_length"
+max_input_bytes = 128
+seeds = ["seeds"]
+
+[[targets]]
 name = "parser_hash_static"
 symbol = "Parser::hash_static"
 source = "src/parser.cpp"
 header = "include/parser.hpp"
+required = true
+input = "bytes_length"
+max_input_bytes = 128
+seeds = ["seeds"]
+
+[[targets]]
+name = "session_process"
+symbol = "Session::process"
+source = "src/parser.cpp"
+header = "include/parser.hpp"
+factory = "Session::create"
 required = true
 input = "bytes_length"
 max_input_bytes = 128

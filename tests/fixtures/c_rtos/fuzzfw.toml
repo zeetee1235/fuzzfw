@@ -1,0 +1,30 @@
+schema_version = 1
+
+[project]
+name = "c-rtos-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "rtos_process"
+symbol = "rtos_process"
+source = "src/rtos.c"
+header = "include/events.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 32
+seeds = ["seeds"]
+
+[[targets.events]]
+symbol = "rtos_ready"
+phase = "before"
+
+[[adapters]]
+original_symbol = "xTaskNotifyWait"
+replacement_source = "tests/fuzzfw/adapters/rtos.c"
+contract = "tests/fuzzfw/contracts/rtos.json"

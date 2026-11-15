@@ -300,6 +300,14 @@ public:
     return true;
   }
 
+  bool VisitArraySubscriptExpr(ArraySubscriptExpr *expr) {
+    if (expr->getType().isVolatileQualified()) {
+      addFlag("MMIO_DIRECT");
+      evidence_.push_back("volatile_subscript:" + relativeLocation(expr->getExprLoc()));
+    }
+    return true;
+  }
+
   bool VisitAtomicExpr(AtomicExpr *expr) {
     addFlag("RTOS_CONTEXT");
     return true;
@@ -348,10 +356,6 @@ private:
   }
 
   void checkType(QualType type) {
-    if (type.isVolatileQualified()) {
-      addFlag("MMIO_DIRECT");
-      evidence_.push_back("volatile_type:" + type.getAsString());
-    }
     std::string text = type.getAsString();
     for (const auto &entry : packed_) {
       if (entry.second && text.find(entry.first) != std::string::npos) {
