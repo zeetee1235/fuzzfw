@@ -84,6 +84,7 @@ type Harness struct {
 	MinInputBytes         int  `toml:"min_input_bytes"`
 	PreserveNonNilOnEmpty bool `toml:"preserve_nonnull_on_empty"`
 	PersistentResetCheck  bool `toml:"persistent_reset_check"`
+	CopyInput             bool `toml:"copy_input"`
 }
 
 // CI controls the check/fuzz gate.
@@ -181,6 +182,7 @@ func Defaults() File {
 			Minimize:              true,
 			PreserveNonNilOnEmpty: true,
 			PersistentResetCheck:  true,
+			CopyInput:             true,
 		},
 		CI: CI{
 			Mode:                "pr",

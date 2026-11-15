@@ -283,6 +283,21 @@ func TestNativeIRLoopBoundEvidence(t *testing.T) {
 	}
 }
 
+func TestExactInputCopyDetectsOverread(t *testing.T) {
+	project := fixture("c_overread")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 1 {
+		t.Fatalf("overread check exit = %d, want 1\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	findings := summary["findings"].([]any)
+	if len(findings) == 0 || findings[0].(map[string]any)["origin"] != "target_crash" {
+		t.Fatalf("unexpected findings: %v", findings)
+	}
+}
+
 func TestDMAEventModelPasses(t *testing.T) {
 	project := fixture("c_dma")
 	ensureBuild(t, project)

@@ -198,6 +198,7 @@ tests/fixtures/          C/C++/HAL/wrapper/fallback fixtures
 - [Harness synthesis](docs/harness-synthesis.md)
 - [Compatibility](docs/compatibility.md)
 - [Security model](docs/security-model.md)
+- [Core parser/protocol plan](docs/core-plan.md)
 - [Diagnostics](docs/reference/diagnostics.md)
 - [Schemas](docs/reference/schemas.md)
 

@@ -94,8 +94,20 @@ if (size > 0) {
 free(copy);
 ```
 
-The copy is allowed only because the plan records that ownership stays with the
-caller and that the target does not retain the pointer. Otherwise the target is
+The read-only path similarly uses an exact-size heap copy when
+`harness.copy_input=true`:
+
+```c
+const uint8_t *input = malloc(size ? size : 1);
+memcpy((void *)input, data, size);
+target(input, size);
+free((void *)input);
+```
+
+This makes reads past `size` visible to ASan even when the fuzzer's source buffer
+has a larger capacity. The copy is allowed only because the plan records that
+ownership stays with the caller and that the target does not retain the
+pointer. Otherwise the target is
 `adaptable` and needs a user wrapper.
 
 ## Length width and truncation

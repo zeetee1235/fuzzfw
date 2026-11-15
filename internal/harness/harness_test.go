@@ -36,6 +36,7 @@ func testPlan(t *testing.T) *Plan {
 
 func TestEmitConstBuffer(t *testing.T) {
 	plan := testPlan(t)
+	plan.CopyInput = true
 	source, extension, err := Emit(plan, &config.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +47,10 @@ func TestEmitConstBuffer(t *testing.T) {
 	for _, want := range []string{
 		`#include "include/parse.h"`,
 		`if (size > 256) return 0;`,
-		`(void)parse(data, size);`,
+		`const uint8_t *input = NULL;`,
+		`memcpy((void *)input, data, size);`,
+		`(void)parse(input, size);`,
+		`free((void *)input);`,
 		`int LLVMFuzzerTestOneInput`,
 	} {
 		if !strings.Contains(source, want) {

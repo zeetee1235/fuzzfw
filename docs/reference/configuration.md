@@ -71,6 +71,7 @@ definitions, include paths, forced includes, and standards are preserved.
 | `min_input_bytes` | `0` | Minimum size retained by minimization. |
 | `preserve_nonnull_on_empty` | `true` | Mutable buffers allocate one byte when input size is zero. |
 | `persistent_reset_check` | `true` | Repeat the same input inside one process and require identical coverage before persistent execution is allowed. |
+| `copy_input` | `true` | Copy engine bytes into an exact-size sanitizer-visible allocation before the target call; required to catch reads past `size`. |
 
 ## `[ci]`
 
