@@ -64,7 +64,7 @@ behavior.
 - Return/output invariant oracle.
 - Protocol-aware corpus quality metrics (valid frames, command/state coverage).
 - Grammar/state-aware mutation only after the deterministic harness work.
-- Optional MSan/integer/local-bounds profiles.
+- Optional MSan profile; integer/local-bounds profiles are implemented.
 
 ## Non-goals
 
