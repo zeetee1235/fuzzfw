@@ -36,6 +36,8 @@
     "analysis": {"type": "object"},
     "copy_input": {"type": "boolean"},
     "output_bytes": {"type": "integer", "minimum": 0},
+    "input_kind": {"type": "string"},
+    "max_frames": {"type": "integer", "minimum": 0},
     "validations": {"type": "array", "items": {"type": "string"}},
     "provenance": {"type": "array", "items": {"type": "string"}},
     "diagnostics": {"type": "array"}

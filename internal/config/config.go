@@ -112,6 +112,7 @@ type Target struct {
 	Input           string            `toml:"input"`
 	MaxInputBytes   int               `toml:"max_input_bytes"`
 	OutputBytes     int               `toml:"output_bytes"`
+	MaxFrames       int               `toml:"max_frames"`
 	Setup           string            `toml:"setup"`
 	Teardown        string            `toml:"teardown"`
 	Factory         string            `toml:"factory"`
@@ -325,7 +326,7 @@ func normalize(file File, path, base string) (*Config, error) {
 	}
 	for _, sanitizer := range file.Host.Sanitizers {
 		switch sanitizer {
-		case "address", "undefined", "leak", "memory", "thread":
+		case "address", "undefined", "leak", "memory", "thread", "integer", "implicit-conversion", "local-bounds", "pointer-overflow", "object-size":
 		default:
 			return nil, usageError(fmt.Sprintf("unknown sanitizer: %s", sanitizer))
 		}
@@ -431,12 +432,18 @@ func normalize(file File, path, base string) (*Config, error) {
 			target.Input = "manual_wrapper"
 		}
 		switch target.Input {
-		case "", "bytes_length", "manual_wrapper", "existing_harness":
+		case "", "bytes_length", "length_prefixed", "manual_wrapper", "existing_harness":
 		default:
 			return nil, usageError(fmt.Sprintf("target %s: unknown input model %q", target.Name, target.Input))
 		}
 		if target.Input == "manual_wrapper" && target.WrapperSource == "" {
 			return nil, usageError(fmt.Sprintf("target %s: manual_wrapper requires wrapper_source and wrapper_symbol", target.Name))
+		}
+		if target.MaxFrames < 0 || target.MaxFrames > 10000 {
+			return nil, usageError(fmt.Sprintf("target %s: max_frames must be between 0 and 10000", target.Name))
+		}
+		if target.Input == "length_prefixed" && target.MaxFrames == 0 {
+			target.MaxFrames = 64
 		}
 		if target.OutputBytes < 0 || target.OutputBytes > 1024*1024 {
 			return nil, usageError(fmt.Sprintf("target %s: output_bytes must be between 0 and 1048576", target.Name))

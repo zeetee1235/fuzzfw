@@ -60,3 +60,19 @@ func TestHonggfuzzDiscoversUnseededCrash(t *testing.T) {
 		t.Fatalf("unexpected findings: %v", findings)
 	}
 }
+
+func TestHonggfuzzCommandDictionaryDiscovery(t *testing.T) {
+	requireHonggfuzz(t)
+	project := fixture("c_commands")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "honggfuzz",
+		"--time", "10s", "--jobs", "2", "--output", out, "--no-minimize", "--quiet")
+	if code != 1 {
+		t.Fatalf("command discovery check exit = %d, want 1\n%s", code, stderr)
+	}
+	summary := readSummary(t, out+"/summary.json")
+	if summary["metrics"].(map[string]any)["cases_fuzzed"].(float64) < 1 {
+		t.Fatalf("no command fuzz executions: %v", summary["metrics"])
+	}
+}

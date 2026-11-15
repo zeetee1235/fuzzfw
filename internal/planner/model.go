@@ -187,7 +187,9 @@ type TargetPlan struct {
 	Diagnostics    []diag.Diagnostic  `json:"diagnostics,omitempty"`
 	MaxInputBytes  int                `json:"max_input_bytes"`
 	OutputBytes    int                `json:"output_bytes,omitempty"`
+	MaxFrames      int                `json:"max_frames,omitempty"`
 	Seeds          []string           `json:"seeds,omitempty"`
+	Dictionary     []string           `json:"dictionary,omitempty"`
 	Wrapper        *WrapperPlan       `json:"wrapper,omitempty"`
 	Factory        *FactoryPlan       `json:"factory,omitempty"`
 	ContextObject  *ContextObjectPlan `json:"context_object,omitempty"`

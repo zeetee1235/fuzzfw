@@ -3,6 +3,8 @@
 package analyzer
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -248,6 +250,7 @@ func (idx *astIndex) buildFunction(node *astNode, qualified, source string, vari
 	fn.GlobalReads = sortedKeys(body.reads)
 	fn.GlobalWrites = sortedKeys(body.writes)
 	fn.HardwareFlags = sortedKeys(body.flags)
+	fn.Constants = uniqueStrings(body.constants)
 	fn.Reasons = append(fn.Reasons, body.reasons...)
 	fn.Evidence = append(fn.Evidence, body.evidence...)
 	return fn
@@ -276,13 +279,14 @@ func functionID(fn Function) string {
 }
 
 type bodyInfo struct {
-	calls    []CallRef
-	indirect []string
-	reads    map[string]bool
-	writes   map[string]bool
-	flags    map[string]bool
-	evidence []Evidence
-	reasons  []string
+	calls     []CallRef
+	constants []string
+	indirect  []string
+	reads     map[string]bool
+	writes    map[string]bool
+	flags     map[string]bool
+	evidence  []Evidence
+	reasons   []string
 }
 
 func (idx *astIndex) analyzeBody(node *astNode, source string) bodyInfo {
@@ -303,6 +307,11 @@ func (idx *astIndex) analyzeBody(node *astNode, source string) bodyInfo {
 }
 
 func (idx *astIndex) walkBody(node *astNode, source string, writeCtx bool, info *bodyInfo, seenCalls map[string]bool) {
+	if node.Kind == "IntegerLiteral" || node.Kind == "StringLiteral" || node.Kind == "CharacterLiteral" {
+		if value := astValueString(node); value != "" {
+			info.constants = append(info.constants, value)
+		}
+	}
 	if node.Kind == "GCCAsmStmt" || node.Kind == "MSAsmStmt" {
 		info.flags["ARCH_ASM"] = true
 		info.evidence = append(info.evidence, Evidence{
@@ -606,4 +615,21 @@ func sourceLocation(source string, node *astNode) string {
 		return fmt.Sprintf("%s:%d", source, node.Loc.line())
 	}
 	return source
+}
+
+func astValueString(node *astNode) string {
+	if len(node.Value) == 0 {
+		return ""
+	}
+	var text string
+	if err := json.Unmarshal(node.Value, &text); err == nil {
+		return text
+	}
+	var number json.Number
+	decoder := json.NewDecoder(bytes.NewReader(node.Value))
+	decoder.UseNumber()
+	if err := decoder.Decode(&number); err == nil {
+		return number.String()
+	}
+	return ""
 }

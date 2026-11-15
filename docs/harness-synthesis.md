@@ -201,6 +201,36 @@ capacity, frees it after the call, and lets ASan catch writes past the capacity.
 The generator does not guess output arguments automatically; this role requires
 an explicit `args` contract.
 
+## Sanitizer profiles
+
+The default profile is ASan + UBSan. For length/overflow-heavy parsers,
+`integer`, `implicit-conversion`, `local-bounds`, `pointer-overflow`, and
+`object-size` can be enabled explicitly. They are opt-in because unsigned
+wrapping is sometimes intentional and would otherwise create noise.
+
+## Constant dictionary
+
+The planner extracts integer/character/string constants from the target and
+comparison facts into a small deterministic dictionary. Build writes it as
+`dictionary.txt` and the engine adapter passes it to libFuzzer (`-dict=`) or
+honggfuzz (`--dict`). This helps command IDs, magic values, and parser
+constants without inventing a protocol grammar.
+
+## Sequence / framed input
+
+For stateful protocols, `input = "length_prefixed"` treats the fuzz input as a
+sequence of frames:
+
+```text
+u32_le length | payload | u32_le length | payload | ...
+```
+
+Each valid frame gets its own exact-size copy and target call; setup/context/
+factory are constructed once, event hooks run per frame, and the frame count is
+bounded by `max_frames`. Truncated or oversized frames stop the sequence. The
+target still receives the original frame bytes; no protocol semantics are
+invented.
+
 ## C context objects
 
 Context pointers are not raw zeroed memory. A target can declare an explicit

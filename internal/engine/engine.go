@@ -50,7 +50,7 @@ type RunResult struct {
 type Engine interface {
 	Name() string
 	Available() (bool, string)
-	Run(ctx context.Context, target string, build *hostbuild.Result, corpusDir, artifactDir string, budget time.Duration, jobs int, maxInput int) (*RunResult, error)
+	Run(ctx context.Context, target string, build *hostbuild.Result, corpusDir, artifactDir string, budget time.Duration, jobs int, maxInput int, dictionaryPath string) (*RunResult, error)
 }
 
 // New selects an engine by name.
@@ -74,7 +74,7 @@ func (e *ReplayEngine) Name() string { return "replay" }
 func (e *ReplayEngine) Available() (bool, string) {
 	return true, "validates corpus and self-test binaries only"
 }
-func (e *ReplayEngine) Run(context.Context, string, *hostbuild.Result, string, string, time.Duration, int, int) (*RunResult, error) {
+func (e *ReplayEngine) Run(context.Context, string, *hostbuild.Result, string, string, time.Duration, int, int, string) (*RunResult, error) {
 	return &RunResult{Engine: "replay"}, nil
 }
 
@@ -92,7 +92,7 @@ func (e *LibFuzzerEngine) Available() (bool, string) {
 	return true, ""
 }
 
-func (e *LibFuzzerEngine) Run(ctx context.Context, target string, build *hostbuild.Result, corpusDir, artifactDir string, budget time.Duration, jobs, maxInput int) (*RunResult, error) {
+func (e *LibFuzzerEngine) Run(ctx context.Context, target string, build *hostbuild.Result, corpusDir, artifactDir string, budget time.Duration, jobs, maxInput int, dictionaryPath string) (*RunResult, error) {
 	if build == nil || build.FuzzBinary == "" {
 		return nil, fmt.Errorf("no libFuzzer binary for target %s", target)
 	}
@@ -125,8 +125,11 @@ func (e *LibFuzzerEngine) Run(ctx context.Context, target string, build *hostbui
 		"-timeout=10",
 		"-rss_limit_mb=2048",
 		"-print_final_stats=1",
-		corpusDir,
 	}
+	if dictionaryPath != "" {
+		argv = append(argv, "-dict="+dictionaryPath)
+	}
+	argv = append(argv, corpusDir)
 	logPath := filepath.Join(artifactDir, "engine.log")
 	started := time.Now()
 	run, err := (proc.Runner{Timeout: budget + 2*time.Minute}).Run(ctx, e.Config.Root, argv...)
@@ -181,7 +184,7 @@ func (e *HonggfuzzEngine) Available() (bool, string) {
 	return true, ""
 }
 
-func (e *HonggfuzzEngine) Run(ctx context.Context, target string, build *hostbuild.Result, corpusDir, artifactDir string, budget time.Duration, jobs, maxInput int) (*RunResult, error) {
+func (e *HonggfuzzEngine) Run(ctx context.Context, target string, build *hostbuild.Result, corpusDir, artifactDir string, budget time.Duration, jobs, maxInput int, dictionaryPath string) (*RunResult, error) {
 	if build == nil || build.FuzzBinary == "" {
 		return nil, fmt.Errorf("no honggfuzz binary for target %s", target)
 	}
@@ -213,8 +216,11 @@ func (e *HonggfuzzEngine) Run(ctx context.Context, target string, build *hostbui
 		"--workspace", artifactDir,
 		"--max_file_size", strconv.Itoa(maxInput),
 		"--exit_upon_crash",
-		"--", build.FuzzBinary,
 	}
+	if dictionaryPath != "" {
+		argv = append(argv, "--dict", dictionaryPath)
+	}
+	argv = append(argv, "--", build.FuzzBinary)
 	logPath := filepath.Join(artifactDir, "engine.log")
 	started := time.Now()
 	run, err := (proc.Runner{Timeout: budget + 2*time.Minute}).Run(ctx, e.Config.Root, argv...)

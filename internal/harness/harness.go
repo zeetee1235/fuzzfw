@@ -53,6 +53,8 @@ type Plan struct {
 	Analysis      planner.AnalysisEvidence `json:"analysis"`
 	CopyInput     bool                     `json:"copy_input"`
 	OutputBytes   int                      `json:"output_bytes,omitempty"`
+	InputKind     string                   `json:"input_kind,omitempty"`
+	MaxFrames     int                      `json:"max_frames,omitempty"`
 	Validations   []string                 `json:"validations"`
 	Provenance    []string                 `json:"provenance"`
 	Diagnostics   []diag.Diagnostic        `json:"diagnostics,omitempty"`
@@ -80,6 +82,8 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 			Validations: defaultValidations(),
 			CopyInput:   cfg.File.Harness.CopyInput,
 			OutputBytes: target.OutputBytes,
+			InputKind:   target.InputModel.Kind,
+			MaxFrames:   target.MaxFrames,
 			Provenance:  append([]string{"explicit_config", "user_wrapper", "fuzzfw_harness"}, target.Analysis.Provenance...),
 		}
 		if err := plan.Finalize(); err != nil {
@@ -120,6 +124,8 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 		Validations:  defaultValidations(),
 		CopyInput:    cfg.File.Harness.CopyInput,
 		OutputBytes:  target.OutputBytes,
+		InputKind:    target.InputModel.Kind,
+		MaxFrames:    target.MaxFrames,
 		Provenance:   append([]string{"project_build", "ast", "fuzzfw_harness"}, target.Analysis.Provenance...),
 	}
 	if plan.Target.LinkSymbol == "" {
@@ -209,7 +215,6 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 	}
 	bufferArg, lengthArg := -1, -1
 	bufferRole := ""
-	capacityArgs := map[int]bool{}
 	for arg, role := range roles {
 		switch role.Role {
 		case planner.RoleFuzzBytes, planner.RoleFuzzBytesMutable:
@@ -223,16 +228,18 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 				return "", "", fmt.Errorf("multiple logical length arguments")
 			}
 			lengthArg = arg
-		case planner.RoleCapacity:
-			capacityArgs[arg] = true
 		case planner.RoleContext:
-			// validated below against ContextObject
+			if plan.Target.ContextObject == nil {
+				return "", "", fmt.Errorf("context role has no context object plan")
+			}
 		case planner.RoleOutputBuffer:
 			if plan.OutputBytes <= 0 {
 				return "", "", fmt.Errorf("output buffer role requires output_bytes")
 			}
-		case planner.RoleConfig:
-			return "", "", fmt.Errorf("argument %d role %s requires a user wrapper", arg, role.Role)
+		case planner.RoleCapacity, planner.RoleConfig:
+			if role.Role == planner.RoleConfig {
+				return "", "", fmt.Errorf("argument %d role %s requires a user wrapper", arg, role.Role)
+			}
 		default:
 			return "", "", fmt.Errorf("argument %d has unsupported role %s", arg, role.Role)
 		}
@@ -265,23 +272,19 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 	}
 	fmt.Fprintf(&b, "    if (size > %d) return 0;\n", planMaxInput(plan, cfg))
 	lengthType := ""
-	for arg, role := range roles {
+	for _, role := range roles {
 		if role.Role == planner.RoleLogicalLength {
 			lengthType = role.Type
 			if macro := lengthGuardMacro(role.Type); macro != "" {
 				fmt.Fprintf(&b, "    if (size > %s) return 0;\n", macro)
 			}
 		}
-		_ = arg
 	}
 	if lengthType == "" {
 		return "", "", fmt.Errorf("logical length type missing")
 	}
 
 	contextRole, hasContext := roles[targetContextArg(plan)]
-	if plan.Target.ContextObject != nil && !hasContext {
-		return "", "", fmt.Errorf("context object requires a CONTEXT role binding")
-	}
 	contextCast := ""
 	if hasContext {
 		contextCast = contextPointerCast(contextRole.Type, "fuzzfw_context")
@@ -336,11 +339,6 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 			fmt.Fprintf(&b, "    %s(%s);\n", ctx.Init, contextCast)
 		}
 	}
-	for _, event := range plan.Target.Events {
-		if event.Phase == "before" {
-			fmt.Fprintf(&b, "    %s();\n", event.Symbol)
-		}
-	}
 	if plan.Target.Factory != nil && !plan.Target.IsStaticMethod {
 		switch plan.Target.Factory.Style {
 		case "value", "unique_ptr", "shared_ptr":
@@ -354,69 +352,35 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 			return "", "", fmt.Errorf("unsupported factory style %q", plan.Target.Factory.Style)
 		}
 	}
-	args := make([]string, 0, len(roles))
-	for arg := 0; arg < len(plan.RoleBindings); arg++ {
-		role, ok := roles[arg]
-		if !ok {
-			return "", "", fmt.Errorf("argument %d has no role binding", arg)
-		}
-		switch role.Role {
-		case planner.RoleFuzzBytes:
-			if needsInputCopy {
-				args = append(args, "input")
-			} else {
-				args = append(args, "data")
-			}
-		case planner.RoleFuzzBytesMutable:
-			args = append(args, "copy")
-		case planner.RoleLogicalLength:
-			args = append(args, castLength(role.Type, "size"))
-		case planner.RoleCapacity:
-			if needsOutput {
-				args = append(args, castLength(role.Type, fmt.Sprintf("%d", plan.OutputBytes)))
-			} else {
-				args = append(args, castLength(role.Type, "size"))
-			}
-		case planner.RoleOutputBuffer:
-			args = append(args, outputPointerCast(role.Type, "output"))
-		case planner.RoleContext:
-			if plan.Target.ContextObject == nil {
-				return "", "", fmt.Errorf("context role has no context object plan")
-			}
-			args = append(args, contextCast)
-		default:
-			return "", "", fmt.Errorf("argument %d role %s cannot be emitted", arg, role.Role)
-		}
+
+	sequence := plan.InputKind == "length_prefixed"
+	baseExpr := "data"
+	if needsInputCopy {
+		baseExpr = "input"
+	} else if needsCopy {
+		baseExpr = "copy"
 	}
-	callSymbol := plan.Target.CallSymbol
-	if callSymbol == "" {
-		callSymbol = plan.Target.LinkSymbol
-	}
-	switch {
-	case plan.Target.IsStaticMethod:
-		fmt.Fprintf(&b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
-	case plan.Target.Factory != nil:
-		method := plan.Target.MethodName
-		if method == "" {
-			return "", "", fmt.Errorf("factory harness has no method name")
+	if sequence {
+		if err := emitSequence(&b, plan, roles, baseExpr, contextCast, needsOutput); err != nil {
+			return "", "", err
 		}
-		switch plan.Target.Factory.Style {
-		case "value", "reference":
-			fmt.Fprintf(&b, "    (void)fuzzfw_object.%s(%s);\n", method, strings.Join(args, ", "))
-		case "unique_ptr", "shared_ptr", "pointer":
-			fmt.Fprintf(&b, "    (void)fuzzfw_object->%s(%s);\n", method, strings.Join(args, ", "))
-		default:
-			return "", "", fmt.Errorf("unsupported factory style %q", plan.Target.Factory.Style)
+	} else {
+		for _, event := range plan.Target.Events {
+			if event.Phase == "before" {
+				fmt.Fprintf(&b, "    %s();\n", event.Symbol)
+			}
 		}
-		if plan.Target.Factory.Style == "pointer" && plan.Target.Factory.Destroy != "" {
-			fmt.Fprintf(&b, "    %s(fuzzfw_object);\n", plan.Target.Factory.Destroy)
+		args, err := callArgs(plan, roles, normalBufferExpr(needsCopy, needsInputCopy), "size", needsOutput, contextCast)
+		if err != nil {
+			return "", "", err
 		}
-	default:
-		fmt.Fprintf(&b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
-	}
-	for _, event := range plan.Target.Events {
-		if event.Phase == "after" {
-			fmt.Fprintf(&b, "    %s();\n", event.Symbol)
+		if err := emitCall(&b, plan, args); err != nil {
+			return "", "", err
+		}
+		for _, event := range plan.Target.Events {
+			if event.Phase == "after" {
+				fmt.Fprintf(&b, "    %s();\n", event.Symbol)
+			}
 		}
 	}
 	for _, teardown := range plan.Context.Teardown {
@@ -436,11 +400,11 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 	if needsInputCopy {
 		b.WriteString("    free((void *)input);\n")
 	}
-	if needsOutput {
-		b.WriteString("    free(output);\n")
-	}
 	if needsCopy {
 		b.WriteString("    free(copy);\n")
+	}
+	if needsOutput {
+		b.WriteString("    free(output);\n")
 	}
 	b.WriteString("    return 0;\n}\n")
 	extension := ".c"
@@ -450,6 +414,126 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 	return b.String(), extension, nil
 }
 
+func normalBufferExpr(mutable, inputCopy bool) string {
+	if mutable {
+		return "copy"
+	}
+	if inputCopy {
+		return "input"
+	}
+	return "data"
+}
+
+func callArgs(plan *Plan, roles map[int]planner.RoleBinding, bufferExpr, lengthExpr string, hasOutput bool, contextCast string) ([]string, error) {
+	args := make([]string, 0, len(roles))
+	for arg := 0; arg < len(plan.RoleBindings); arg++ {
+		role, ok := roles[arg]
+		if !ok {
+			return nil, fmt.Errorf("argument %d has no role binding", arg)
+		}
+		switch role.Role {
+		case planner.RoleFuzzBytes, planner.RoleFuzzBytesMutable:
+			args = append(args, bufferExpr)
+		case planner.RoleLogicalLength:
+			args = append(args, castLength(role.Type, lengthExpr))
+		case planner.RoleCapacity:
+			if hasOutput {
+				args = append(args, castLength(role.Type, fmt.Sprintf("%d", plan.OutputBytes)))
+			} else {
+				args = append(args, castLength(role.Type, lengthExpr))
+			}
+		case planner.RoleOutputBuffer:
+			args = append(args, outputPointerCast(role.Type, "output"))
+		case planner.RoleContext:
+			args = append(args, contextCast)
+		default:
+			return nil, fmt.Errorf("argument %d role %s cannot be emitted", arg, role.Role)
+		}
+	}
+	return args, nil
+}
+
+func emitCall(b *strings.Builder, plan *Plan, args []string) error {
+	callSymbol := plan.Target.CallSymbol
+	if callSymbol == "" {
+		callSymbol = plan.Target.LinkSymbol
+	}
+	switch {
+	case plan.Target.IsStaticMethod:
+		fmt.Fprintf(b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
+	case plan.Target.Factory != nil:
+		method := plan.Target.MethodName
+		if method == "" {
+			return fmt.Errorf("factory harness has no method name")
+		}
+		switch plan.Target.Factory.Style {
+		case "value", "reference":
+			fmt.Fprintf(b, "    (void)fuzzfw_object.%s(%s);\n", method, strings.Join(args, ", "))
+		case "unique_ptr", "shared_ptr", "pointer":
+			fmt.Fprintf(b, "    (void)fuzzfw_object->%s(%s);\n", method, strings.Join(args, ", "))
+		default:
+			return fmt.Errorf("unsupported factory style %q", plan.Target.Factory.Style)
+		}
+		if plan.Target.Factory.Style == "pointer" && plan.Target.Factory.Destroy != "" {
+			fmt.Fprintf(b, "    %s(fuzzfw_object);\n", plan.Target.Factory.Destroy)
+		}
+	default:
+		fmt.Fprintf(b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
+	}
+	return nil
+}
+
+func emitSequence(b *strings.Builder, plan *Plan, roles map[int]planner.RoleBinding, baseExpr, contextCast string, hasOutput bool) error {
+	maxFrames := plan.MaxFrames
+	if maxFrames <= 0 {
+		maxFrames = 64
+	}
+	b.WriteString("    size_t fuzzfw_offset = 0;\n")
+	b.WriteString("    unsigned fuzzfw_frames = 0;\n")
+	fmt.Fprintf(b, "    while (fuzzfw_offset + 4 <= size && fuzzfw_frames < %d) {\n", maxFrames)
+	fmt.Fprintf(b, "        uint32_t fuzzfw_frame_len = (uint32_t)%s[fuzzfw_offset] |\n", baseExpr)
+	fmt.Fprintf(b, "            ((uint32_t)%s[fuzzfw_offset + 1] << 8) |\n", baseExpr)
+	fmt.Fprintf(b, "            ((uint32_t)%s[fuzzfw_offset + 2] << 16) |\n", baseExpr)
+	fmt.Fprintf(b, "            ((uint32_t)%s[fuzzfw_offset + 3] << 24);\n", baseExpr)
+	b.WriteString("        fuzzfw_offset += 4;\n")
+	b.WriteString("        if ((size_t)fuzzfw_frame_len > size - fuzzfw_offset) break;\n")
+	for _, role := range roles {
+		if role.Role == planner.RoleLogicalLength {
+			if macro := lengthGuardMacro(role.Type); macro != "" {
+				fmt.Fprintf(b, "        if (fuzzfw_frame_len > %s) break;\n", macro)
+			}
+		}
+	}
+	b.WriteString("        uint8_t *frame_copy = (uint8_t *)malloc(fuzzfw_frame_len ? fuzzfw_frame_len : 1);\n")
+	b.WriteString("        if (frame_copy == NULL) return 0;\n")
+	b.WriteString("        if (fuzzfw_frame_len) memcpy(frame_copy, ")
+	b.WriteString(baseExpr)
+	b.WriteString(" + fuzzfw_offset, fuzzfw_frame_len); else frame_copy[0] = 0;\n")
+	for _, event := range plan.Target.Events {
+		if event.Phase == "before" {
+			fmt.Fprintf(b, "        %s();\n", event.Symbol)
+		}
+	}
+	args, err := callArgs(plan, roles, "frame_copy", "fuzzfw_frame_len", hasOutput, contextCast)
+	if err != nil {
+		b.WriteString("        free(frame_copy);\n")
+		return err
+	}
+	if err := emitCall(b, plan, args); err != nil {
+		b.WriteString("        free(frame_copy);\n")
+		return err
+	}
+	for _, event := range plan.Target.Events {
+		if event.Phase == "after" {
+			fmt.Fprintf(b, "        %s();\n", event.Symbol)
+		}
+	}
+	b.WriteString("        free(frame_copy);\n")
+	b.WriteString("        fuzzfw_offset += fuzzfw_frame_len;\n")
+	b.WriteString("        fuzzfw_frames++;\n")
+	b.WriteString("    }\n")
+	return nil
+}
 func emitWrapper(plan *Plan) string {
 	var b strings.Builder
 	b.WriteString("/* GENERATED by fuzzfw; do not edit. */\n")

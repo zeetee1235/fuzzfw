@@ -57,8 +57,8 @@ func TestEmitConstBuffer(t *testing.T) {
 			t.Fatalf("missing %q in:\n%s", want, source)
 		}
 	}
-	if strings.Contains(source, "malloc") {
-		t.Fatal("const buffer should not be copied")
+	if !strings.Contains(source, "malloc(size)") {
+		t.Fatal("const buffer should be copied into an exact-size allocation")
 	}
 }
 
@@ -114,6 +114,22 @@ func TestEmitFactoryValueAndPointer(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"auto *fuzzfw_object = RawParser::create();", "fuzzfw_object->feed(data, size);", "RawParser::destroy(fuzzfw_object);"} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing %q in:\n%s", want, source)
+		}
+	}
+}
+
+func TestSequenceHarnessEmitsFrames(t *testing.T) {
+	plan := testPlan(t)
+	plan.CopyInput = true
+	plan.InputKind = "length_prefixed"
+	plan.MaxFrames = 8
+	source, _, err := Emit(plan, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"while (fuzzfw_offset + 4 <= size", "fuzzfw_frame_len", "frame_copy", "fuzzfw_frames++"} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("missing %q in:\n%s", want, source)
 		}

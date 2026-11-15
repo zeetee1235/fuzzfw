@@ -143,7 +143,7 @@ func runFuzz(ctx context.Context, global globalOptions, args []string) (int, err
 				allDiagnostics = append(allDiagnostics, diag.Newf(diag.EEngineUnavailable,
 					"target %s has no fuzz binary for engine %s", name, engineName).WithTarget(name))
 			} else {
-				runResult, err := fuzzEngine.Run(ctx, name, &built.Result, corpusDir, out.TargetEngine(name), perTarget, jobs, target.MaxInputBytes)
+				runResult, err := fuzzEngine.Run(ctx, name, &built.Result, corpusDir, out.TargetEngine(name), perTarget, jobs, target.MaxInputBytes, built.Result.DictionaryPath)
 				if err != nil {
 					allDiagnostics = append(allDiagnostics, diag.Newf(diag.EEngineFailed,
 						"engine %s failed for %s: %v", engineName, name, err).WithTarget(name))

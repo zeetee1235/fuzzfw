@@ -17,26 +17,27 @@ type astDocument struct {
 }
 
 type astNode struct {
-	ID                  string      `json:"id"`
-	Kind                string      `json:"kind"`
-	Name                string      `json:"name"`
-	MangledName         string      `json:"mangledName"`
-	Type                astType     `json:"type"`
-	Loc                 astLoc      `json:"loc"`
-	Range               astRange    `json:"range"`
-	Inner               []astNode   `json:"inner"`
-	ReferencedDecl      *astDeclRef `json:"referencedDecl"`
-	CastKind            string      `json:"castKind"`
-	Opcode              string      `json:"opcode"`
-	StorageClass        string      `json:"storageClass"`
-	IsImplicit          bool        `json:"isImplicit"`
-	IsUsed              bool        `json:"isUsed"`
-	ValueCategory       string      `json:"valueCategory"`
-	ParentDeclContextID string      `json:"parentDeclContextId"`
-	PreviousDecl        string      `json:"previousDecl"`
-	Variadic            bool        `json:"variadic"`
-	Inline              bool        `json:"inline"`
-	IsArrow             bool        `json:"isArrow"`
+	ID                  string          `json:"id"`
+	Kind                string          `json:"kind"`
+	Name                string          `json:"name"`
+	MangledName         string          `json:"mangledName"`
+	Type                astType         `json:"type"`
+	Loc                 astLoc          `json:"loc"`
+	Range               astRange        `json:"range"`
+	Inner               []astNode       `json:"inner"`
+	ReferencedDecl      *astDeclRef     `json:"referencedDecl"`
+	CastKind            string          `json:"castKind"`
+	Opcode              string          `json:"opcode"`
+	StorageClass        string          `json:"storageClass"`
+	IsImplicit          bool            `json:"isImplicit"`
+	IsUsed              bool            `json:"isUsed"`
+	ValueCategory       string          `json:"valueCategory"`
+	Value               json.RawMessage `json:"value"`
+	ParentDeclContextID string          `json:"parentDeclContextId"`
+	PreviousDecl        string          `json:"previousDecl"`
+	Variadic            bool            `json:"variadic"`
+	Inline              bool            `json:"inline"`
+	IsArrow             bool            `json:"isArrow"`
 }
 
 type astType struct {

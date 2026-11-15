@@ -298,6 +298,33 @@ func TestOutputCapacityOverrunDetected(t *testing.T) {
 	}
 }
 
+func TestCommandDictionaryGenerated(t *testing.T) {
+	project := fixture("c_commands")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("command dictionary check exit = %d\n%s", code, stderr)
+	}
+	data, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "generated", "handle_command", "dictionary.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "\\x42") {
+		t.Fatalf("command constant missing from dictionary: %s", data)
+	}
+}
+
+func TestLengthPrefixedSequencePasses(t *testing.T) {
+	project := fixture("c_sequence")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("sequence check exit = %d\n%s", code, stderr)
+	}
+}
+
 func TestCContextLifecyclePasses(t *testing.T) {
 	project := fixture("c_context")
 	ensureBuild(t, project)

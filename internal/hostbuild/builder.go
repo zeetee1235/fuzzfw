@@ -77,6 +77,13 @@ func (b *Builder) Build(target planner.TargetPlan, hp *harness.Plan) (*Result, e
 		return nil, err
 	}
 	result.HarnessPlanPath = planPath
+	if len(target.Dictionary) > 0 {
+		dictionaryPath := filepath.Join(generatedDir, "dictionary.txt")
+		if err := fsutil.WriteFileAtomic(dictionaryPath, []byte(strings.Join(target.Dictionary, "\n")+"\n"), 0o644); err != nil {
+			return nil, err
+		}
+		result.DictionaryPath = dictionaryPath
+	}
 	source, extension, err := harness.Emit(hp, b.Cfg)
 	if err != nil {
 		result.Status = StatusHarnessBuildFailed

@@ -1,0 +1,22 @@
+schema_version = 1
+
+[project]
+name = "c-sequence-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "frame_value"
+symbol = "frame_value"
+source = "src/sequence.c"
+header = "include/sequence.h"
+required = true
+input = "length_prefixed"
+max_frames = 8
+max_input_bytes = 64
+seeds = ["seeds"]

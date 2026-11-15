@@ -24,31 +24,37 @@ behavior.
   typed pointer, and persistent reset verification. Invalid signatures are
   rejected by the planner.
 
-### 3. Structured length/frame/output roles — output/capacity complete; frame work next
+### 3. Structured length/frame/output roles — complete for explicit contracts
 
 - `OUTPUT_BUFFER` + configured capacity; capacity/`len` relation evidence.
 - Multiple-length and length-prefix contract; nested length fields remain
   explicit.
 - Integer-overflow guards and optional integer sanitizer profile.
 - Done: explicit `OUTPUT_BUFFER`/`CAPACITY` allocation with exact `output_bytes`;
-  `c_output` fixture detects a write past the configured capacity.
-- Next: TLV/frame length contracts and integer-overflow hardening.
+  `c_output` detects a write past the configured capacity.
+- Done: length-prefixed frame sequences, per-frame exact copies, and optional
+  integer/implicit-conversion/local-bounds profiles.
+- Remaining: automatic inner-TLV/nested-length inference is intentionally not
+  claimed; use explicit roles or a wrapper.
 
-### 4. Sequence / stateful harness
+### 4. Sequence / stateful harness — complete for length-prefixed frames
 
 - Length-prefixed frame sequence as one fuzz input.
 - Multiple target calls and/or event hooks per sequence.
 - State reset/rollback contract; per-frame and whole-sequence reproduction.
-- Acceptance: protocol state fixture reaches a later state only with a valid
-  sequence; invalid reset reports `E_STATE_LEAK`/`E_CONTEXT_INVALID`.
+- Done: `input = "length_prefixed"` with bounded frames, per-frame exact copy,
+  per-frame events, and one setup/context/factory lifecycle.
+- Remaining: per-frame reset/rollback contract and state-transition coverage.
 
-### 5. Command dispatch extraction
+### 5. Command dispatch extraction — constant dictionary complete
 
 - Extract `switch`/enum/command-table constants.
 - Command-aware seed and dictionary generation.
 - Command-specific target or framing plan where evidence is sufficient.
-- Acceptance: command handler fixture discovers a non-first command bug from an
-  empty corpus.
+- Done: switch/compare constants become an engine dictionary; `c_commands`
+  discovers command `0x42` from a benign `0x10` seed.
+- Remaining: command names/table extraction, per-command seed synthesis, and
+  command-level coverage.
 
 ## P1 — precision
 

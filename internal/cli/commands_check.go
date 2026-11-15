@@ -203,7 +203,7 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 				if targetBudget > remaining {
 					targetBudget = remaining
 				}
-				runResult, runErr := fuzzEngine.Run(ctx, target.Name, &built.Result, corpusDir, out.TargetEngine(target.Name), targetBudget, jobs, target.MaxInputBytes)
+				runResult, runErr := fuzzEngine.Run(ctx, target.Name, &built.Result, corpusDir, out.TargetEngine(target.Name), targetBudget, jobs, target.MaxInputBytes, built.Result.DictionaryPath)
 				if runErr != nil {
 					engineFailed[target.Name] = true
 					allDiagnostics = append(allDiagnostics, diag.Newf(diag.EEngineFailed,

@@ -93,6 +93,7 @@ struct FunctionFact {
   bool variadic = false;
   std::vector<ParamFact> params;
   std::vector<CallFact> calls;
+  std::vector<std::string> constants;
   std::vector<std::string> unresolved;
   std::vector<std::string> indirect;
   std::vector<std::string> global_reads;
@@ -201,6 +202,21 @@ public:
   BodyVisitor(ASTContext &context, std::string root, std::map<std::string, bool> packed)
       : context_(context), sm_(context.getSourceManager()), root_(std::move(root)),
         packed_(std::move(packed)) {}
+
+  bool VisitIntegerLiteral(IntegerLiteral *literal) {
+    constants_.push_back(std::to_string(literal->getValue().getSExtValue()));
+    return true;
+  }
+
+  bool VisitStringLiteral(StringLiteral *literal) {
+    constants_.push_back(literal->getString().str());
+    return true;
+  }
+
+  bool VisitCharacterLiteral(CharacterLiteral *literal) {
+    constants_.push_back(std::to_string(static_cast<int>(literal->getValue())));
+    return true;
+  }
 
   bool VisitCallExpr(CallExpr *expr) {
     if (const FunctionDecl *callee = expr->getDirectCallee()) {
@@ -314,6 +330,7 @@ public:
   }
 
   const std::vector<CallFact> &calls() const { return calls_; }
+  const std::vector<std::string> &constants() const { return constants_; }
   const std::vector<std::string> &indirect() const { return indirect_; }
   const std::vector<std::string> &reads() const { return reads_; }
   const std::vector<std::string> &writes() const { return writes_; }
@@ -395,6 +412,7 @@ private:
   std::string root_;
   std::map<std::string, bool> packed_;
   std::vector<CallFact> calls_;
+  std::vector<std::string> constants_;
   std::vector<std::string> indirect_;
   std::vector<std::string> reads_;
   std::vector<std::string> writes_;
@@ -468,6 +486,7 @@ public:
       BodyVisitor body(context_, root_, packed_);
       body.TraverseStmt(decl->getBody());
       fact.calls = body.calls();
+      fact.constants = body.constants();
       fact.indirect = body.indirect();
       fact.global_reads = body.reads();
       fact.global_writes = body.writes();
@@ -662,6 +681,7 @@ llvm::json::Object functionJSON(const FunctionFact &fact) {
       array.push_back(value);
     object[key] = std::move(array);
   };
+  addArray("constants", fact.constants);
   addArray("global_reads", fact.global_reads);
   addArray("global_writes", fact.global_writes);
   addArray("hardware_flags", fact.hardware_flags);

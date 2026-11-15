@@ -127,6 +127,7 @@ type Function struct {
 	GlobalReads     []string   `json:"global_reads,omitempty"`
 	GlobalWrites    []string   `json:"global_writes,omitempty"`
 	HardwareFlags   []string   `json:"hardware_flags,omitempty"`
+	Constants       []string   `json:"constants,omitempty"`
 	Reasons         []string   `json:"reasons,omitempty"`
 	Evidence        []Evidence `json:"evidence,omitempty"`
 }

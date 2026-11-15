@@ -36,7 +36,7 @@ schema_version = 1
 | `libraries` | `[]` | Library file paths relative to project root. |
 | `extra_cflags` | `[]` | Extra host compiler flags. |
 | `extra_ldflags` | `[]` | Extra host linker flags. |
-| `sanitizers` | `["address","undefined"]` | Supported: address, undefined, leak, memory, thread. |
+| `sanitizers` | `["address","undefined"]` | Supported: address, undefined, leak, memory, thread, integer, implicit-conversion, local-bounds, pointer-overflow, object-size. Integer/implicit profiles are opt-in because they can be noisy on intentional wrapping. |
 | `optimization` | `-O1` | `-O0`..`-O3`, `-Os`, `-Oz`. |
 | `coverage` | `true` | Adds `-fsanitize-coverage=trace-pc-guard` for self-test. |
 | `coverage_mode` | `trace-pc-guard` | `trace-pc-guard` or `none`. |
@@ -98,9 +98,10 @@ definitions, include paths, forced includes, and standards are preserved.
 | `source` | auto | TU/source path. Used for matching and wrapper builds. |
 | `header` | auto | Header that declares the function. No automatic prototype synthesis. |
 | `required` | `false` | Required for `check`; at least one required target or `--target` is mandatory. |
-| `input` | auto | `bytes_length`, `manual_wrapper`, or `existing_harness`. |
+| `input` | auto | `bytes_length`, `length_prefixed`, `manual_wrapper`, or `existing_harness`. `length_prefixed` reads a 4-byte little-endian frame length before each call. |
 | `max_input_bytes` | harness default | Per-target cap; must not exceed the global cap (0 inherits). |
 | `output_bytes` | unset | Allocated output capacity for explicit `OUTPUT_BUFFER`/`CAPACITY` roles. |
+| `max_frames` | `64` for `length_prefixed` | Maximum frames processed from one fuzz input. |
 | `setup` | unset | Explicit setup function called before the target. Must be declared by the included header. |
 | `teardown` | unset | Explicit teardown function called after the target. |
 | `factory` | unset | Explicit C++ factory symbol for a member function target. Value, reference, raw pointer, `std::unique_ptr`, and `std::shared_ptr` returns are recognized. |

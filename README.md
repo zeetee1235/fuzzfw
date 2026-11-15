@@ -153,6 +153,10 @@ See [configuration](docs/reference/configuration.md) and
 - Adapter contracts and user wrapper escape hatch.
 - C context objects with explicit init/reset/destroy lifecycle.
 - Explicit output buffers with configured capacity and overrun detection.
+- Length-prefixed multi-frame sequences with bounded per-frame target calls.
+- Deterministic command/magic-constant dictionaries passed to libFuzzer and
+  honggfuzz.
+- Optional integer/implicit-conversion/local-bounds sanitizer profiles.
 - C++ free functions/namespaces and member functions through explicit
   factory/RAII paths (value, reference with external lifetime, raw pointer +
   destroy, `unique_ptr`, `shared_ptr`).

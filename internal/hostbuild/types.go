@@ -104,6 +104,7 @@ type Result struct {
 	FuzzBinary        string                   `json:"fuzz_binary,omitempty"`
 	FuzzSHA256        string                   `json:"fuzz_sha256,omitempty"`
 	BuildLog          string                   `json:"build_log"`
+	DictionaryPath    string                   `json:"dictionary_path,omitempty"`
 	Objects           []string                 `json:"objects,omitempty"`
 	Adapters          []planner.AdapterBinding `json:"adapters,omitempty"`
 	Dependencies      []string                 `json:"dependencies,omitempty"`
