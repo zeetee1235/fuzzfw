@@ -327,12 +327,20 @@ func normalize(file File, path, base string) (*Config, error) {
 	if len(file.Host.Sanitizers) == 0 {
 		file.Host.Sanitizers = []string{"address", "undefined"}
 	}
+	hasSanitizer := map[string]bool{}
 	for _, sanitizer := range file.Host.Sanitizers {
 		switch sanitizer {
 		case "address", "undefined", "leak", "memory", "thread", "integer", "implicit-conversion", "local-bounds", "pointer-overflow", "object-size":
 		default:
 			return nil, usageError(fmt.Sprintf("unknown sanitizer: %s", sanitizer))
 		}
+		hasSanitizer[sanitizer] = true
+	}
+	if hasSanitizer["memory"] && (hasSanitizer["address"] || hasSanitizer["thread"]) {
+		return nil, usageError("sanitizer memory cannot be combined with address or thread")
+	}
+	if hasSanitizer["thread"] && hasSanitizer["address"] {
+		return nil, usageError("sanitizer thread cannot be combined with address")
 	}
 	switch file.Host.Optimization {
 	case "-O0", "-O1", "-O2", "-O3", "-Os", "-Oz":

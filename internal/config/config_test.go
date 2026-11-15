@@ -126,3 +126,18 @@ func TestWrapperRequiresSymbol(t *testing.T) {
 		t.Fatal("expected wrapper validation error")
 	}
 }
+
+func TestIncompatibleSanitizersRejected(t *testing.T) {
+	path := writeFixture(t)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = append(data, []byte("\n[host]\nsanitizers = [\"address\", \"memory\"]\n")...)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path, "", true); err == nil {
+		t.Fatal("expected incompatible sanitizer error")
+	}
+}

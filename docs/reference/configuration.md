@@ -36,7 +36,7 @@ schema_version = 1
 | `libraries` | `[]` | Library file paths relative to project root. |
 | `extra_cflags` | `[]` | Extra host compiler flags. |
 | `extra_ldflags` | `[]` | Extra host linker flags. |
-| `sanitizers` | `["address","undefined"]` | Supported: address, undefined, leak, memory, thread, integer, implicit-conversion, local-bounds, pointer-overflow, object-size. Integer/implicit profiles are opt-in because they can be noisy on intentional wrapping. |
+| `sanitizers` | `["address","undefined"]` | Supported: address, undefined, leak, memory, thread, integer, implicit-conversion, local-bounds, pointer-overflow, object-size. `memory` (MSan) cannot be combined with address/thread; MSan also requires an MSan-instrumented C++ runtime. Integer/implicit profiles are opt-in because they can be noisy on intentional wrapping. |
 | `optimization` | `-O1` | `-O0`..`-O3`, `-Os`, `-Oz`. |
 | `coverage` | `true` | Adds `-fsanitize-coverage=trace-pc-guard` for self-test. |
 | `coverage_mode` | `trace-pc-guard` | `trace-pc-guard` or `none`. |

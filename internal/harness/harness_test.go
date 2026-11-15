@@ -127,6 +127,8 @@ func TestSequenceHarnessEmitsFrames(t *testing.T) {
 	plan.MaxFrames = 8
 	plan.Target.StateProbe = "state_probe"
 	plan.Target.FrameReset = "state_frame_reset"
+	plan.Target.InvariantCheck = "state_invariant"
+	plan.Target.InvariantArgs = 1
 	source, _, err := Emit(plan, &config.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -140,6 +142,8 @@ func TestSequenceHarnessEmitsFrames(t *testing.T) {
 		"int fuzzfw_state = state_probe();",
 		"fuzzfw_run_frame((uint32_t)fuzzfw_frames, fuzzfw_state);",
 		"state_frame_reset();",
+		"fuzzfw_return = parse(frame_copy, fuzzfw_frame_len);",
+		`if (state_invariant((int)fuzzfw_return) != 0) fuzzfw_invariant_failed("state_invariant");`,
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("missing %q in:\n%s", want, source)

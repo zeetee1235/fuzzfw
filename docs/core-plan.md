@@ -70,7 +70,9 @@ behavior.
   corpus input; command-level coverage remains heuristic through the
   dictionary.
 - Grammar/state-aware mutation only after the deterministic harness work.
-- Optional MSan profile; integer/local-bounds profiles are implemented.
+- Optional MSan profile is accepted with an explicit incompatibility check;
+  integer/local-bounds profiles are implemented. MSan still requires an
+  MSan-instrumented runtime/toolchain.
 
 ## Non-goals
 
