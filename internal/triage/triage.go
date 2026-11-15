@@ -87,6 +87,7 @@ type ReplayOutcome struct {
 
 var (
 	asanLine      = regexp.MustCompile(`AddressSanitizer:\s*([A-Za-z0-9_-]+)`)
+	msanLine      = regexp.MustCompile(`MemorySanitizer:\s*([A-Za-z0-9_-]+)`)
 	lsanLine      = regexp.MustCompile(`LeakSanitizer:\s*([A-Za-z0-9_-]+)`)
 	ubsanLine     = regexp.MustCompile(`runtime error:\s*([^\n]+)`)
 	frameLine     = regexp.MustCompile(`^\s*#(\d+)\s+0x[0-9a-fA-F]+\s+in\s+([^\s]+)\s+([^\s:]+):(\d+)`)
@@ -290,6 +291,9 @@ func crashKind(log string, exitCode, signal int, timedOut bool) string {
 	if match := asanLine.FindStringSubmatch(log); match != nil {
 		return "address:" + match[1]
 	}
+	if match := msanLine.FindStringSubmatch(log); match != nil {
+		return "memory:" + match[1]
+	}
 	if match := lsanLine.FindStringSubmatch(log); match != nil {
 		return "leak:" + match[1]
 	}
@@ -370,7 +374,7 @@ func classifyOrigin(log string, frames []string, build *hostbuild.Result) string
 			return "target_crash"
 		}
 	}
-	if asanLine.MatchString(log) || ubsanLine.MatchString(log) || lsanLine.MatchString(log) {
+	if asanLine.MatchString(log) || msanLine.MatchString(log) || ubsanLine.MatchString(log) || lsanLine.MatchString(log) {
 		return "unknown"
 	}
 	return "unknown"

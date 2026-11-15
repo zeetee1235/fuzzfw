@@ -7,6 +7,7 @@
 | [Harness synthesis](harness-synthesis.md) | Role inference and validation gates |
 | [Security model](security-model.md) | Trust boundaries and runner isolation |
 | [Core roadmap](core-plan.md) | Parser/protocol/command/state-machine priorities |
+| [Firmware pilots](pilots.md) | Real third-party firmware component validation |
 | [Compatibility](compatibility.md) | Supported code/build/engine matrix |
 | [CLI](reference/cli.md) | Commands, flags, exit codes |
 | [Configuration](reference/configuration.md) | `fuzzfw.toml` fields |

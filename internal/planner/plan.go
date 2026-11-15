@@ -273,6 +273,7 @@ func functionTargetPlan(
 	tp.MaxFrames = target.MaxFrames
 	tp.StateProbe = target.StateProbe
 	tp.FrameReset = target.FrameReset
+	tp.CommandSeeds = target.CommandSeeds
 	tp.Roles = roles.roles
 	tp.Constraints = roles.constraints
 	tp.Reasons = append(tp.Reasons, roles.reasons...)

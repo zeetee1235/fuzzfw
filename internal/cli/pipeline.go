@@ -5,6 +5,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -257,6 +258,11 @@ func prepareCorpus(cfg *config.Config, out *artifacts.Output, target planner.Tar
 			return "", 0, err
 		}
 	}
+	if target.CommandSeeds {
+		if err := writeCommandSeeds(corpusDir, target); err != nil {
+			return "", 0, err
+		}
+	}
 	for index, seed := range target.Seeds {
 		source := seed
 		if !filepath.IsAbs(source) {
@@ -336,6 +342,7 @@ type corpusQuality struct {
 	StateHashes      []string
 	CommandConstants int
 	CommandsCovered  int
+	Transitions      []string
 }
 
 func replayCorpus(
@@ -349,6 +356,7 @@ func replayCorpus(
 	var diagnostics []diag.Diagnostic
 	quality := corpusQuality{}
 	states := map[string]bool{}
+	transitions := map[string]bool{}
 	var commandTokens [][]byte
 	for _, token := range target.CommandConstants {
 		if decoded := planner.DictionaryTokenBytes(token); len(decoded) > 0 {
@@ -384,6 +392,9 @@ func replayCorpus(
 					states[outcome.Report.StateHash] = true
 				}
 			}
+			for _, transition := range outcome.Report.Transitions {
+				transitions[transition] = true
+			}
 			if outcome.Report.Frames > quality.Frames {
 				quality.Frames = outcome.Report.Frames
 			}
@@ -398,6 +409,10 @@ func replayCorpus(
 		quality.StateHashes = append(quality.StateHashes, hash)
 	}
 	sort.Strings(quality.StateHashes)
+	for transition := range transitions {
+		quality.Transitions = append(quality.Transitions, transition)
+	}
+	sort.Strings(quality.Transitions)
 	quality.CommandsCovered = len(coveredCommands)
 	return raw, quality, diagnostics
 }
@@ -484,4 +499,40 @@ func newBuildInfoDocument(state *buildState, tools any, plan *planner.Plan) buil
 		Toolchain:           tools,
 		Plan:                plan,
 	}
+}
+
+func writeCommandSeeds(corpusDir string, target planner.TargetPlan) error {
+	maxInput := target.MaxInputBytes
+	if maxInput <= 0 {
+		maxInput = 64
+	}
+	for index, token := range target.CommandConstants {
+		payload := planner.DictionaryTokenBytes(token)
+		if len(payload) == 0 {
+			continue
+		}
+		variants := [][]byte{append([]byte(nil), payload...), append(append([]byte(nil), payload...), 0)}
+		for variant, body := range variants {
+			if len(body) > maxInput {
+				continue
+			}
+			data := body
+			if target.InputModel.Kind == "length_prefixed" {
+				if len(body)+4 > maxInput {
+					continue
+				}
+				data = make([]byte, 4+len(body))
+				binary.LittleEndian.PutUint32(data, uint32(len(body)))
+				copy(data[4:], body)
+			}
+			path := filepath.Join(corpusDir, fmt.Sprintf("fuzzfw-command-%02d-%d", index, variant))
+			if fsutil.Exists(path) {
+				continue
+			}
+			if err := fsutil.WriteFileAtomic(path, data, 0o644); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

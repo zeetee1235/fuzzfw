@@ -156,13 +156,15 @@ See [configuration](docs/reference/configuration.md) and
 - Post-call return/output invariant hooks that become triaged
   `target_invariant` findings.
 - Per-target corpus quality metrics for replayed inputs, executed frames,
-  distinct observed states, and heuristic command coverage.
+  distinct states/transitions, and heuristic command coverage.
 - Length-prefixed multi-frame sequences with bounded per-frame target calls,
   state probing, per-frame reset hooks, and recorded state hashes.
-- Deterministic command/magic-constant dictionaries passed to libFuzzer and
-  honggfuzz.
+- Deterministic command/magic-constant dictionaries and optional synthesized
+  command corpus seeds.
 - Conservative local-call interprocedural IR argument-use propagation.
-- Optional integer/implicit-conversion/local-bounds sanitizer profiles.
+- Optional MSan/TSan and integer/implicit-conversion/local-bounds sanitizer
+  profiles; MSan findings are triaged as `memory:*`.
+- Real-runtime pilot against the `jsmn` embedded JSON tokenizer.
 - C++ free functions/namespaces and member functions through explicit
   factory/RAII paths (value, reference with external lifetime, raw pointer +
   destroy, `unique_ptr`, `shared_ptr`).
@@ -211,6 +213,7 @@ tests/fixtures/          C/C++/HAL/wrapper/fallback fixtures
 - [Compatibility](docs/compatibility.md)
 - [Security model](docs/security-model.md)
 - [Core parser/protocol plan](docs/core-plan.md)
+- [Firmware pilots](docs/pilots.md)
 - [Diagnostics](docs/reference/diagnostics.md)
 - [Schemas](docs/reference/schemas.md)
 

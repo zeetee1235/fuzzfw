@@ -69,28 +69,30 @@ type AdapterSummary struct {
 
 // TargetSummary records one target's gate results.
 type TargetSummary struct {
-	Name             string            `json:"name"`
-	Required         bool              `json:"required"`
-	Classification   string            `json:"classification"`
-	Status           string            `json:"status"`
-	Engine           string            `json:"engine,omitempty"`
-	HarnessID        string            `json:"harness_id,omitempty"`
-	SelftestBinary   string            `json:"selftest_binary,omitempty"`
-	FuzzBinary       string            `json:"fuzz_binary,omitempty"`
-	EntryHit         bool              `json:"entry_hit"`
-	InputUse         string            `json:"input_use,omitempty"`
-	Stability        string            `json:"stability,omitempty"`
-	Dependencies     []string          `json:"required_translation_units,omitempty"`
-	Adapters         []AdapterSummary  `json:"adapters,omitempty"`
-	CorpusInputs     int               `json:"corpus_inputs,omitempty"`
-	InputsWithData   int               `json:"inputs_with_frames,omitempty"`
-	CorpusFrames     uint64            `json:"corpus_frames,omitempty"`
-	DistinctStates   int               `json:"distinct_states,omitempty"`
-	StateHashes      []string          `json:"state_hashes,omitempty"`
-	CommandConstants int               `json:"command_constants,omitempty"`
-	CommandsCovered  int               `json:"commands_covered,omitempty"`
-	FindingIDs       []string          `json:"finding_ids,omitempty"`
-	Diagnostics      []diag.Diagnostic `json:"diagnostics,omitempty"`
+	Name                string            `json:"name"`
+	Required            bool              `json:"required"`
+	Classification      string            `json:"classification"`
+	Status              string            `json:"status"`
+	Engine              string            `json:"engine,omitempty"`
+	HarnessID           string            `json:"harness_id,omitempty"`
+	SelftestBinary      string            `json:"selftest_binary,omitempty"`
+	FuzzBinary          string            `json:"fuzz_binary,omitempty"`
+	EntryHit            bool              `json:"entry_hit"`
+	InputUse            string            `json:"input_use,omitempty"`
+	Stability           string            `json:"stability,omitempty"`
+	Dependencies        []string          `json:"required_translation_units,omitempty"`
+	Adapters            []AdapterSummary  `json:"adapters,omitempty"`
+	CorpusInputs        int               `json:"corpus_inputs,omitempty"`
+	InputsWithData      int               `json:"inputs_with_frames,omitempty"`
+	CorpusFrames        uint64            `json:"corpus_frames,omitempty"`
+	DistinctStates      int               `json:"distinct_states,omitempty"`
+	StateHashes         []string          `json:"state_hashes,omitempty"`
+	DistinctTransitions int               `json:"distinct_transitions,omitempty"`
+	Transitions         []string          `json:"transitions,omitempty"`
+	CommandConstants    int               `json:"command_constants,omitempty"`
+	CommandsCovered     int               `json:"commands_covered,omitempty"`
+	FindingIDs          []string          `json:"finding_ids,omitempty"`
+	Diagnostics         []diag.Diagnostic `json:"diagnostics,omitempty"`
 }
 
 // FindingRecord adds baseline status to a finding.

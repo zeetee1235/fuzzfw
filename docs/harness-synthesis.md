@@ -231,7 +231,13 @@ The planner extracts integer/character/string constants from the target and
 comparison facts into a small deterministic dictionary. Switch-case constants
 and non-length comparison constants are also recorded separately as
 `command_constants`; corpus replay reports how many of those tokens appear in
-the prepared corpus. Build writes it as
+the prepared corpus.
+
+With `command_seeds = true`, corpus preparation writes two minimal deterministic
+seeds per command token: the bare token and the token plus one zero byte. A
+`length_prefixed` target gets each seed wrapped in a valid frame. The seeds are
+corpus-only, so they do not change the build/self-test gate; replaying them
+tests command dispatch and short-payload handling without a discovery run. Build writes it as
 `dictionary.txt` and the engine adapter passes it to libFuzzer (`-dict=`) or
 honggfuzz (`--dict`). This helps command IDs, magic values, and parser
 constants without inventing a protocol grammar.
@@ -254,8 +260,9 @@ invented.
 `state_probe` observes the machine after each call. With a context it must be
 `int(context *)`; without one it must be `int(void)`. The observed value is
 folded into a deterministic state hash alongside the frame index, and the
-replay report records `frames` and `state_hash`. These are observations only;
-they do not invent transitions.
+replay report records `frames`, `state_hash`, and the distinct transition pairs
+observed in that input. These are observations only; they do not invent
+transitions.
 
 `frame_reset` is an explicit per-frame cleanup contract. It must be
 `void(void)` or `void(context *)` and is called after the probe and events for
@@ -270,6 +277,8 @@ observation metrics:
 - `inputs_with_frames`: inputs that executed at least one target/frame call;
 - `corpus_frames`: maximum frames observed in one input;
 - `distinct_states` / `state_hashes`: distinct observed state hashes;
+- `distinct_transitions` / `transitions`: distinct observed state pairs
+  (`previous->current`, starting from the initialized state);
 - `command_constants` / `commands_covered`: heuristic switch-case/compare
   tokens observed in the corpus.
 

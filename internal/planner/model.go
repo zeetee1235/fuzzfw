@@ -192,6 +192,7 @@ type TargetPlan struct {
 	FrameReset       string             `json:"frame_reset,omitempty"`
 	InvariantCheck   string             `json:"invariant_check,omitempty"`
 	InvariantArgs    int                `json:"invariant_args,omitempty"`
+	CommandSeeds     bool               `json:"command_seeds,omitempty"`
 	Seeds            []string           `json:"seeds,omitempty"`
 	Dictionary       []string           `json:"dictionary,omitempty"`
 	CommandConstants []string           `json:"command_constants,omitempty"`

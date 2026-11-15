@@ -7,7 +7,7 @@
 | Host OS | Linux x86-64 | Primary target. Other Linux architectures are not release-validated. |
 | Go | 1.23+ | Single static control-plane binary. |
 | Clang/LLVM | 17+ | AST JSON fallback and native analyzers target modern Clang. |
-| Sanitizers | ASan, UBSan, LSan, MSan, TSan, integer, implicit-conversion, local-bounds, pointer-overflow, object-size | Default `address,undefined` with `-fno-sanitize-recover=all`. MSan requires an instrumented runtime and cannot be combined with ASan/TSan. |
+| Sanitizers | ASan, UBSan, LSan, MSan, TSan, integer, implicit-conversion, local-bounds, pointer-overflow, object-size | Default `address,undefined` with `-fno-sanitize-recover=all`. MSan is validated for C (`c_msan`); C++ MSan requires an instrumented runtime. MSan cannot be combined with ASan/TSan. |
 | CMake compdb | Yes | `compile_commands.json` with `arguments` or `command`. |
 | Make compdb | Yes, if a valid JSON compdb is produced | fuzzfw does not infer link commands from Makefiles. |
 | CMake File API | Not yet | P1. |

@@ -1,0 +1,21 @@
+schema_version = 1
+
+[project]
+name = "jsmn-pilot"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+corpus_dir = "corpus"
+
+[[targets]]
+name = "jsmn_parse"
+symbol = "jsmn_parse"
+source = "src/jsmn_impl.c"
+required = true
+wrapper_symbol = "fuzzfw_jsmn_parse"
+wrapper_source = "wrapper.c"
+seeds = ["seeds"]

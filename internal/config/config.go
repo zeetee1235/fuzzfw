@@ -116,6 +116,7 @@ type Target struct {
 	StateProbe      string            `toml:"state_probe"`
 	FrameReset      string            `toml:"frame_reset"`
 	InvariantCheck  string            `toml:"invariant_check"`
+	CommandSeeds    bool              `toml:"command_seeds"`
 	Setup           string            `toml:"setup"`
 	Teardown        string            `toml:"teardown"`
 	Factory         string            `toml:"factory"`

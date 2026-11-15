@@ -190,6 +190,8 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 			summary.CorpusFrames = quality.Frames
 			summary.DistinctStates = len(quality.StateHashes)
 			summary.StateHashes = quality.StateHashes
+			summary.DistinctTransitions = len(quality.Transitions)
+			summary.Transitions = quality.Transitions
 			summary.CommandConstants = quality.CommandConstants
 			summary.CommandsCovered = quality.CommandsCovered
 			summaries[target.Name] = summary

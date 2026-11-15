@@ -48,6 +48,7 @@ type ReplayReport struct {
 	EntryHit      *bool             `json:"entry_hit"`
 	Frames        uint64            `json:"frames,omitempty"`
 	StateHash     string            `json:"state_hash,omitempty"`
+	Transitions   []string          `json:"transitions,omitempty"`
 	Iterations    []ReplayIteration `json:"iterations,omitempty"`
 }
 
@@ -85,6 +86,7 @@ type Selftest struct {
 	PersistentHashes  []string     `json:"persistent_hashes,omitempty"`
 	Frames            uint64       `json:"frames,omitempty"`
 	StateHash         string       `json:"state_hash,omitempty"`
+	Transitions       []string     `json:"transitions,omitempty"`
 	Stable            bool         `json:"stable"`
 	InputUse          string       `json:"input_use"` // observed, weak_sensitivity, unknown
 	DistinctCoverage  int          `json:"distinct_coverage"`
@@ -170,12 +172,18 @@ func (b *Builder) profiles(target planner.TargetPlan) (selftest buildProfile, fu
 				"libFuzzer support is not available in the selected Clang").Warning().WithTarget(target.Name))
 			return selftest, nil, diagnostics
 		}
+		fuzzerCompile := "-fsanitize=fuzzer-no-link"
+		fuzzerLink := "-fsanitize=fuzzer"
+		if names := joinComma(b.Cfg.File.Host.Sanitizers); names != "" {
+			fuzzerCompile += "," + names
+			fuzzerLink += "," + names
+		}
 		fuzz = &buildProfile{
 			Name:         "fuzz-libfuzzer",
 			CompilerC:    b.Cfg.File.Host.Clang,
 			CompilerCXX:  b.Cfg.File.Host.ClangXX,
-			CompileFlags: append(append([]string{}, base...), "-fsanitize=fuzzer-no-link,address,undefined", "-fno-sanitize-recover=all"),
-			LinkFlags:    []string{"-fsanitize=fuzzer,address,undefined", "-fno-sanitize-recover=all", "-g", "-fno-omit-frame-pointer", "-ldl", "-lm", "-pthread"},
+			CompileFlags: append(append([]string{}, base...), fuzzerCompile, "-fno-sanitize-recover=all"),
+			LinkFlags:    []string{fuzzerLink, "-fno-sanitize-recover=all", "-g", "-fno-omit-frame-pointer", "-ldl", "-lm", "-pthread"},
 			NeedReplay:   false,
 		}
 		return selftest, fuzz, nil

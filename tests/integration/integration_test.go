@@ -6,6 +6,7 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -42,6 +43,10 @@ func TestMain(m *testing.M) {
 
 func fixture(name string) string {
 	return filepath.Join(repoRoot, "tests", "fixtures", name)
+}
+
+func pilot(name string) string {
+	return filepath.Join(repoRoot, "tests", "pilots", name)
 }
 
 func ensureBuild(t *testing.T, project string) {
@@ -283,6 +288,48 @@ func TestNativeIRLoopBoundEvidence(t *testing.T) {
 	}
 }
 
+func TestMemorySanitizerFinding(t *testing.T) {
+	project := fixture("c_msan")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 1 {
+		t.Fatalf("MSan check exit = %d, want 1\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	findings := summary["findings"].([]any)
+	if len(findings) == 0 {
+		t.Fatal("MSan finding missing")
+	}
+	finding := findings[0].(map[string]any)
+	if finding["kind"] != "memory:use-of-uninitialized-value" || finding["origin"] != "target_crash" {
+		t.Fatalf("unexpected MSan finding: %v", finding)
+	}
+	reproduction := finding["reproduction"].(map[string]any)
+	if reproduction["level"] != "R1_HOST_REPRODUCED" {
+		t.Fatalf("reproduction = %v", reproduction)
+	}
+	buildInfo, err := os.ReadFile(filepath.Join(out, "build-info.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(buildInfo, &document); err != nil {
+		t.Fatal(err)
+	}
+	result := document["targets"].([]any)[0].(map[string]any)["result"].(map[string]any)
+	sanitizers := result["build_delta"].(map[string]any)["sanitizers"].([]any)
+	found := false
+	for _, sanitizer := range sanitizers {
+		if sanitizer == "memory" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("build delta sanitizers = %v", sanitizers)
+	}
+}
+
 func TestOutputCapacityOverrunDetected(t *testing.T) {
 	project := fixture("c_output")
 	ensureBuild(t, project)
@@ -363,7 +410,8 @@ func TestLengthPrefixedSequencePasses(t *testing.T) {
 	summary := readSummary(t, filepath.Join(out, "summary.json"))
 	targetSummary := summary["targets"].([]any)[0].(map[string]any)
 	for key, want := range map[string]float64{
-		"corpus_inputs": 3, "inputs_with_frames": 2, "corpus_frames": 3, "distinct_states": 2,
+		"corpus_inputs": 3, "inputs_with_frames": 2, "corpus_frames": 3,
+		"distinct_states": 2, "distinct_transitions": 3,
 	} {
 		if got := targetSummary[key].(float64); got != want {
 			t.Fatalf("%s = %v, want %v", key, got, want)
@@ -371,6 +419,9 @@ func TestLengthPrefixedSequencePasses(t *testing.T) {
 	}
 	if hashes := targetSummary["state_hashes"].([]any); len(hashes) != 2 {
 		t.Fatalf("state_hashes = %v", hashes)
+	}
+	if transitions := targetSummary["transitions"].([]any); len(transitions) != 3 {
+		t.Fatalf("transitions = %v", transitions)
 	}
 	buildInfo, err := os.ReadFile(filepath.Join(out, "build-info.json"))
 	if err != nil {
@@ -388,6 +439,9 @@ func TestLengthPrefixedSequencePasses(t *testing.T) {
 	if hash, _ := selftest["state_hash"].(string); hash == "" {
 		t.Fatal("state_hash was not recorded")
 	}
+	if transitions := selftest["transitions"].([]any); len(transitions) != 3 {
+		t.Fatalf("selftest transitions = %v", transitions)
+	}
 	planData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "plan.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -399,6 +453,72 @@ func TestLengthPrefixedSequencePasses(t *testing.T) {
 	planned := plan["targets"].([]any)[0].(map[string]any)
 	if planned["state_probe"] != "sequence_state_probe" || planned["frame_reset"] != "sequence_state_frame_reset" {
 		t.Fatalf("state/frame contract missing from plan: %v", planned)
+	}
+}
+
+func TestJSMNFirmwarePilotPasses(t *testing.T) {
+	project := pilot("jsmn")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("jsmn pilot exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	if summary["status"] != "pass" || len(summary["findings"].([]any)) != 0 {
+		t.Fatalf("unexpected pilot summary: %v", summary)
+	}
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["status"] != "selftest_passed" || target["entry_hit"] != true {
+		t.Fatalf("unexpected pilot target: %v", target)
+	}
+	if target["corpus_inputs"].(float64) < 3 {
+		t.Fatalf("pilot corpus was not replayed: %v", target)
+	}
+}
+
+func TestJSMNFirmwarePilotLibFuzzer(t *testing.T) {
+	project := pilot("jsmn")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "libfuzzer",
+		"--time", "3s", "--jobs", "1", "--output", out, "--no-minimize", "--quiet")
+	if code == 2 || code == 3 {
+		t.Skipf("libFuzzer toolchain not available: %s", stderr)
+	}
+	if code != 0 {
+		t.Fatalf("jsmn libFuzzer pilot exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	if summary["metrics"].(map[string]any)["cases_fuzzed"].(float64) < 1 {
+		t.Fatalf("pilot did not execute the fuzzer: %v", summary["metrics"])
+	}
+}
+
+func TestCommandSeedsSynthesized(t *testing.T) {
+	project := fixture("c_command_seeds")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 1 {
+		t.Fatalf("command seed check exit = %d, want 1\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	findings := summary["findings"].([]any)
+	if len(findings) == 0 || findings[0].(map[string]any)["origin"] != "target_crash" {
+		t.Fatalf("unexpected findings: %v", findings)
+	}
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["commands_covered"].(float64) != 2 || target["command_constants"].(float64) != 2 {
+		t.Fatalf("command coverage = %v/%v", target["commands_covered"], target["command_constants"])
+	}
+	seedPath := filepath.Join(out, "corpus", "command_seed_entry", "fuzzfw-command-01-1")
+	data, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatalf("synthesized command seed missing: %v", err)
+	}
+	if !bytes.Equal(data, []byte{0x42, 0x00}) {
+		t.Fatalf("synthesized seed = %x", data)
 	}
 }
 

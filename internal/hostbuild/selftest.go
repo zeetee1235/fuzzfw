@@ -20,6 +20,7 @@ import (
 
 var (
 	asanPattern      = regexp.MustCompile(`AddressSanitizer: ([A-Za-z0-9_-]+)`)
+	msanPattern      = regexp.MustCompile(`MemorySanitizer: ([A-Za-z0-9_-]+)`)
 	lsanPattern      = regexp.MustCompile(`LeakSanitizer: ([A-Za-z0-9_-]+)`)
 	ubsanPattern     = regexp.MustCompile(`runtime error: ([^\n]+)`)
 	invariantPattern = regexp.MustCompile(`fuzzfw invariant violated:\s*([^\n]+)`)
@@ -56,6 +57,7 @@ func (b *Builder) runSelftest(target planner.TargetPlan, hp *harness.Plan, binar
 		timeout = time.Duration(b.Cfg.File.Host.TimeoutSeconds) * time.Second
 	}
 	seenCoverage := map[string]bool{}
+	seenTransitions := map[string]bool{}
 	for _, testCase := range cases {
 		reportPath := filepath.Join(casesDir, fsutil.SafeName(testCase.name, "case")+".report.json")
 		_ = os.Remove(reportPath)
@@ -89,6 +91,9 @@ func (b *Builder) runSelftest(target planner.TargetPlan, hp *harness.Plan, binar
 			if report.Frames > 0 && report.StateHash != "" {
 				result.StateHash = report.StateHash
 			}
+			for _, transition := range report.Transitions {
+				seenTransitions[transition] = true
+			}
 		}
 		caseResult.Sanitizer = sanitizerKind(run.Stderr)
 		caseResult.Crash = run.ExitCode != 0 || run.Signal != 0 || run.TimedOut || caseResult.Sanitizer != ""
@@ -103,6 +108,10 @@ func (b *Builder) runSelftest(target planner.TargetPlan, hp *harness.Plan, binar
 		result.CoverageHashes = append(result.CoverageHashes, hash)
 	}
 	sort.Strings(result.CoverageHashes)
+	for transition := range seenTransitions {
+		result.Transitions = append(result.Transitions, transition)
+	}
+	sort.Strings(result.Transitions)
 	if !result.EntryHit && result.DistinctCoverage == 0 {
 		result.EntryUnknown = true
 	}
@@ -276,6 +285,9 @@ func readReplayReport(path string) (*ReplayReport, error) {
 func sanitizerKind(log string) string {
 	if match := asanPattern.FindStringSubmatch(log); match != nil {
 		return "address:" + match[1]
+	}
+	if match := msanPattern.FindStringSubmatch(log); match != nil {
+		return "memory:" + match[1]
 	}
 	if match := lsanPattern.FindStringSubmatch(log); match != nil {
 		return "leak:" + match[1]

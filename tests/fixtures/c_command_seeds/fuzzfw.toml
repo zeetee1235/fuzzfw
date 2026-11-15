@@ -1,0 +1,22 @@
+schema_version = 1
+
+[project]
+name = "c-command-seeds-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "command_seed_entry"
+symbol = "command_seed_entry"
+source = "src/command_seeds.c"
+header = "include/command_seeds.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 16
+command_seeds = true
+seeds = ["seeds"]

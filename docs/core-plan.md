@@ -46,7 +46,9 @@ behavior.
   per-frame events, and one setup/context/factory lifecycle.
 - Done: optional `state_probe` after each call and `frame_reset` after each frame;
   replay reports record frame count and a deterministic state hash.
-- Remaining: state-transition coverage metrics and protocol-semantic oracles.
+- Done: replay/build-info/summary record distinct `previous->current` state
+  transitions; per-frame `invariant_check` supplies a semantic oracle.
+- Remaining: richer transition graph/state-targeted mutation.
 
 ### 5. Command dispatch extraction — constant dictionary complete
 
@@ -57,7 +59,10 @@ behavior.
   discovers command `0x42` from a benign `0x10` seed.
 - Done: switch-case commands are extracted as `command_constants` and corpus
   replay reports `commands_covered` as a heuristic coverage metric.
-- Remaining: command names/table extraction and per-command seed synthesis.
+- Done: `command_seeds = true` synthesizes minimal command and command+zero
+  seeds, framed for `length_prefixed`; `c_command_seeds` detects its bug with
+  replay alone.
+- Remaining: command name/table extraction and richer per-command framing.
 
 ## P1 — precision
 
@@ -69,10 +74,14 @@ behavior.
 - Protocol-aware corpus quality metrics — frame/state coverage recorded per
   corpus input; command-level coverage remains heuristic through the
   dictionary.
+- Real firmware pilot — complete for `jsmn` at pinned commit
+  `25647e692c7906b96ffd2b05ca54c097948e879c`: replay pass and 4.8M libFuzzer
+  executions with no finding; see `docs/pilots.md`.
 - Grammar/state-aware mutation only after the deterministic harness work.
-- Optional MSan profile is accepted with an explicit incompatibility check;
-  integer/local-bounds profiles are implemented. MSan still requires an
-  MSan-instrumented runtime/toolchain.
+- Optional MSan profile is accepted with an explicit incompatibility check and
+  validated end-to-end by `c_msan` (`memory:use-of-uninitialized-value` at R1).
+  integer/local-bounds profiles are implemented. C++ MSan still requires an
+  MSan-instrumented C++ runtime/toolchain.
 
 ## Non-goals
 
