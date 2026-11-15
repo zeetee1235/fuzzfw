@@ -8,6 +8,7 @@
 | [Security model](security-model.md) | Trust boundaries and runner isolation |
 | [Core roadmap](core-plan.md) | Parser/protocol/command/state-machine priorities |
 | [Firmware pilots](pilots.md) | Real third-party firmware component validation |
+| [honggfuzz matrix](honggfuzz-matrix.md) | Validated honggfuzz refs and operator matrix |
 | [Compatibility](compatibility.md) | Supported code/build/engine matrix |
 | [CLI](reference/cli.md) | Commands, flags, exit codes |
 | [Configuration](reference/configuration.md) | `fuzzfw.toml` fields |

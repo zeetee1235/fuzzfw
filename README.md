@@ -156,19 +156,32 @@ See [configuration](docs/reference/configuration.md) and
 - Post-call return/output invariant hooks that become triaged
   `target_invariant` findings.
 - Per-target corpus quality metrics for replayed inputs, executed frames,
-  distinct states/transitions, and heuristic command coverage.
-- Length-prefixed multi-frame sequences with bounded per-frame target calls,
-  state probing, per-frame reset hooks, and recorded state hashes.
-- Deterministic command/magic-constant dictionaries and optional synthesized
-  command corpus seeds.
-- Conservative local-call interprocedural IR argument-use propagation.
+  distinct states/transitions, heuristic command coverage, and
+  coverage/state corpus deduplication.
+- Length-prefixed multi-frame sequences with configurable TLV framing,
+  bounded per-frame target calls, state probing, per-frame reset hooks, and
+  recorded state hashes.
+- Deterministic command/magic-constant dictionaries, enum/table extraction,
+  and optional synthesized command corpus seeds.
+- Conservative local-call interprocedural IR propagation through direct
+  parameters and simple local aliases.
 - Optional MSan/TSan and integer/implicit-conversion/local-bounds sanitizer
-  profiles; MSan findings are triaged as `memory:*`.
+  profiles; C and C++ MSan findings are triaged as `memory:*`.
 - Real-runtime pilot against the `jsmn` embedded JSON tokenizer.
 - C++ free functions/namespaces and member functions through explicit
   factory/RAII paths (value, reference with external lifetime, raw pointer +
   destroy, `unique_ptr`, `shared_ptr`).
 - libFuzzer and honggfuzz adapters end-to-end tested.
+- Existing libFuzzer harness reuse without generating a replacement entry.
+- Unit-test setup/teardown extraction around an existing target callsite.
+- Explicit C++ constructors with literal arguments and AST validation.
+- Zero-argument UART/network entry points through approved input-source
+  adapters (`adapter_stream`).
+- CMake File API `codemodel-v2` fallback for projects without a compilation
+  database.
+- Multi-target parallel build/check/fuzz scheduling (`ci.target_jobs`) with
+  deterministic output ordering.
+- Frame-aware libFuzzer custom mutation for length-prefixed/TLV targets.
 - IR loop-bound/data-dependence evidence and compare-constant facts.
 - Finding minimization and baseline bootstrap.
 - Persistent reset probe: identical input repeated in one process must produce
@@ -181,13 +194,14 @@ See [configuration](docs/reference/configuration.md) and
 
 ## Not yet
 
-- Arbitrary C++ constructors and automatic object-graph synthesis; complex
-  graphs must go through an explicit factory or wrapper.
+- Automatic C++ object-graph synthesis; complex graphs must go through an
+  explicit factory, constructor literals, or wrapper.
 - Full RTOS scheduler emulation; only approved event adapters/hooks are supported.
-- Whole-program points-to analysis and deeper interprocedural alias reasoning.
-- Existing unit-test context extraction.
-- Multi-target parallel scheduling.
-- honggfuzz validation across a wider release matrix.
+- Whole-program cross-translation-unit points-to analysis.
+- Full firmware image or hardware-in-the-loop execution; requires an external
+  emulator/HIL setup.
+- honggfuzz validation across a wider release matrix (operator script and
+  validated refs are documented in `docs/honggfuzz-matrix.md`).
 
 ## Repository layout
 

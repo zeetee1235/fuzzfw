@@ -85,6 +85,8 @@ type Harness struct {
 	PreserveNonNilOnEmpty bool `toml:"preserve_nonnull_on_empty"`
 	PersistentResetCheck  bool `toml:"persistent_reset_check"`
 	CopyInput             bool `toml:"copy_input"`
+	CorpusDedup           bool `toml:"corpus_dedup"`
+	FrameMutator          bool `toml:"frame_mutator"`
 }
 
 // CI controls the check/fuzz gate.
@@ -100,35 +102,42 @@ type CI struct {
 	OutputDir           string `toml:"output_dir"`
 	MaxFindings         int    `toml:"max_findings"`
 	PerTargetSeconds    int    `toml:"per_target_seconds"`
+	TargetJobs          int    `toml:"target_jobs"`
 }
 
 // Target is a user-declared fuzz target or an explicit wrapper escape hatch.
 type Target struct {
-	Name            string            `toml:"name"`
-	Symbol          string            `toml:"symbol"`
-	Source          string            `toml:"source"`
-	Header          string            `toml:"header"`
-	Required        bool              `toml:"required"`
-	Input           string            `toml:"input"`
-	MaxInputBytes   int               `toml:"max_input_bytes"`
-	OutputBytes     int               `toml:"output_bytes"`
-	MaxFrames       int               `toml:"max_frames"`
-	StateProbe      string            `toml:"state_probe"`
-	FrameReset      string            `toml:"frame_reset"`
-	InvariantCheck  string            `toml:"invariant_check"`
-	CommandSeeds    bool              `toml:"command_seeds"`
-	Setup           string            `toml:"setup"`
-	Teardown        string            `toml:"teardown"`
-	Factory         string            `toml:"factory"`
-	FactoryLifetime string            `toml:"factory_lifetime"`
-	Destroy         string            `toml:"destroy"`
-	WrapperSymbol   string            `toml:"wrapper_symbol"`
-	WrapperSource   string            `toml:"wrapper_source"`
-	Seeds           []string          `toml:"seeds"`
-	Args            []string          `toml:"args"`
-	BuildVariant    string            `toml:"build_variant"`
-	Events          []EventHookConfig `toml:"events"`
-	Context         *ContextConfig    `toml:"context"`
+	Name                  string            `toml:"name"`
+	Symbol                string            `toml:"symbol"`
+	Source                string            `toml:"source"`
+	Header                string            `toml:"header"`
+	Required              bool              `toml:"required"`
+	Input                 string            `toml:"input"`
+	MaxInputBytes         int               `toml:"max_input_bytes"`
+	OutputBytes           int               `toml:"output_bytes"`
+	MaxFrames             int               `toml:"max_frames"`
+	StateProbe            string            `toml:"state_probe"`
+	FrameReset            string            `toml:"frame_reset"`
+	InvariantCheck        string            `toml:"invariant_check"`
+	CommandSeeds          bool              `toml:"command_seeds"`
+	Setup                 string            `toml:"setup"`
+	Teardown              string            `toml:"teardown"`
+	Factory               string            `toml:"factory"`
+	FactoryLifetime       string            `toml:"factory_lifetime"`
+	Destroy               string            `toml:"destroy"`
+	Constructor           string            `toml:"constructor"`
+	ConstructorArgs       []string          `toml:"constructor_args"`
+	WrapperSymbol         string            `toml:"wrapper_symbol"`
+	WrapperSource         string            `toml:"wrapper_source"`
+	ExistingHarnessSource string            `toml:"existing_harness_source"`
+	UnitTestSource        string            `toml:"unit_test_source"`
+	UnitTestFunction      string            `toml:"unit_test_function"`
+	Seeds                 []string          `toml:"seeds"`
+	Args                  []string          `toml:"args"`
+	BuildVariant          string            `toml:"build_variant"`
+	Events                []EventHookConfig `toml:"events"`
+	Context               *ContextConfig    `toml:"context"`
+	Framing               *FramingConfig    `toml:"framing"`
 }
 
 // ContextConfig describes an explicit C context object and its lifecycle.
@@ -139,6 +148,13 @@ type ContextConfig struct {
 	Reset   string `toml:"reset"`
 	Destroy string `toml:"destroy"`
 	Arg     int    `toml:"arg"`
+}
+
+// FramingConfig describes the explicit length-prefixed frame envelope.
+type FramingConfig struct {
+	LengthBytes    int    `toml:"length_bytes"`
+	Endian         string `toml:"endian"`
+	IncludesHeader bool   `toml:"includes_header"`
 }
 
 // EventHookConfig is an explicit event dispatch around the target call.
@@ -200,6 +216,8 @@ func Defaults() File {
 			PreserveNonNilOnEmpty: true,
 			PersistentResetCheck:  true,
 			CopyInput:             true,
+			CorpusDedup:           true,
+			FrameMutator:          true,
 		},
 		CI: CI{
 			Mode:                "pr",
@@ -209,6 +227,7 @@ func Defaults() File {
 			FailOnNewReproduced: true,
 			IncompleteIsFailure: true,
 			MaxFindings:         50,
+			TargetJobs:          1,
 		},
 	}
 }
@@ -390,6 +409,9 @@ func normalize(file File, path, base string) (*Config, error) {
 	if file.CI.PerTargetSeconds < 0 {
 		return nil, usageError("ci.per_target_seconds must not be negative")
 	}
+	if file.CI.TargetJobs <= 0 {
+		file.CI.TargetJobs = 1
+	}
 	file.CI.Baseline = resolveOptional(root, file.CI.Baseline)
 	file.CI.CorpusDir = resolveOptional(root, file.CI.CorpusDir)
 	file.CI.OutputDir = resolveOptional(root, file.CI.OutputDir)
@@ -426,6 +448,15 @@ func normalize(file File, path, base string) (*Config, error) {
 		if target.Destroy != "" && target.Factory == "" {
 			return nil, usageError(fmt.Sprintf("target %s: destroy requires factory", target.Name))
 		}
+		if target.Constructor != "" && target.Factory != "" {
+			return nil, usageError(fmt.Sprintf("target %s: constructor and factory are mutually exclusive", target.Name))
+		}
+		if target.Constructor == "" && len(target.ConstructorArgs) > 0 {
+			return nil, usageError(fmt.Sprintf("target %s: constructor_args requires constructor", target.Name))
+		}
+		if target.Constructor != "" && (target.FactoryLifetime != "" || target.Destroy != "") {
+			return nil, usageError(fmt.Sprintf("target %s: constructor does not accept factory_lifetime or destroy", target.Name))
+		}
 		if target.Context != nil {
 			if target.Context.Kind == "" {
 				target.Context.Kind = "opaque"
@@ -443,19 +474,62 @@ func normalize(file File, path, base string) (*Config, error) {
 		if target.WrapperSource != "" && target.Input == "" {
 			target.Input = "manual_wrapper"
 		}
+		if target.ExistingHarnessSource != "" && target.Input == "" {
+			target.Input = "existing_harness"
+		}
 		switch target.Input {
-		case "", "bytes_length", "length_prefixed", "manual_wrapper", "existing_harness":
+		case "", "bytes_length", "length_prefixed", "adapter_stream", "manual_wrapper", "existing_harness":
 		default:
 			return nil, usageError(fmt.Sprintf("target %s: unknown input model %q", target.Name, target.Input))
 		}
 		if target.Input == "manual_wrapper" && target.WrapperSource == "" {
 			return nil, usageError(fmt.Sprintf("target %s: manual_wrapper requires wrapper_source and wrapper_symbol", target.Name))
 		}
+		if target.UnitTestSource != "" {
+			target.UnitTestSource = fsutil.Resolve(root, target.UnitTestSource)
+			if !fsutil.Exists(target.UnitTestSource) {
+				return nil, usageError(fmt.Sprintf("target %s: unit_test_source not found: %s", target.Name, target.UnitTestSource))
+			}
+		}
+		if target.UnitTestFunction != "" && target.UnitTestSource == "" {
+			return nil, usageError(fmt.Sprintf("target %s: unit_test_function requires unit_test_source", target.Name))
+		}
+		if target.Input == "existing_harness" {
+			if target.ExistingHarnessSource == "" {
+				return nil, usageError(fmt.Sprintf("target %s: existing_harness requires existing_harness_source", target.Name))
+			}
+			target.ExistingHarnessSource = fsutil.Resolve(root, target.ExistingHarnessSource)
+			if !fsutil.Exists(target.ExistingHarnessSource) {
+				return nil, usageError(fmt.Sprintf("target %s: existing_harness_source not found: %s", target.Name, target.ExistingHarnessSource))
+			}
+			if target.WrapperSource != "" {
+				return nil, usageError(fmt.Sprintf("target %s: existing_harness cannot be combined with wrapper_source", target.Name))
+			}
+		}
 		if target.MaxFrames < 0 || target.MaxFrames > 10000 {
 			return nil, usageError(fmt.Sprintf("target %s: max_frames must be between 0 and 10000", target.Name))
 		}
 		if target.Input == "length_prefixed" && target.MaxFrames == 0 {
 			target.MaxFrames = 64
+		}
+		if target.Framing != nil {
+			if target.Input != "length_prefixed" {
+				return nil, usageError(fmt.Sprintf("target %s: targets.framing requires input=length_prefixed", target.Name))
+			}
+			if target.Framing.LengthBytes == 0 {
+				target.Framing.LengthBytes = 4
+			}
+			switch target.Framing.LengthBytes {
+			case 1, 2, 4, 8:
+			default:
+				return nil, usageError(fmt.Sprintf("target %s: framing.length_bytes must be 1, 2, 4, or 8", target.Name))
+			}
+			if target.Framing.Endian == "" {
+				target.Framing.Endian = "little"
+			}
+			if target.Framing.Endian != "little" && target.Framing.Endian != "big" {
+				return nil, usageError(fmt.Sprintf("target %s: framing.endian must be little or big", target.Name))
+			}
 		}
 		if target.FrameReset != "" && target.Input != "length_prefixed" {
 			return nil, usageError(fmt.Sprintf("target %s: frame_reset requires input=length_prefixed", target.Name))

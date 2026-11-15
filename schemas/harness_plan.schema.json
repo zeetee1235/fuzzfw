@@ -16,7 +16,7 @@
         "name": {"type": "string"},
         "function_id": {"type": "string"},
         "language": {"type": "string"},
-        "entry_kind": {"enum": ["direct_buffer_api", "manual_wrapper"]},
+        "entry_kind": {"enum": ["direct_buffer_api", "manual_wrapper", "existing_harness"]},
         "link_symbol": {"type": "string"},
         "call_symbol": {"type": "string"},
         "source_header": {"type": "string"},
@@ -42,6 +42,7 @@
     "output_bytes": {"type": "integer", "minimum": 0},
     "input_kind": {"type": "string"},
     "max_frames": {"type": "integer", "minimum": 0},
+    "framing": {"type": "object"},
     "validations": {"type": "array", "items": {"type": "string"}},
     "provenance": {"type": "array", "items": {"type": "string"}},
     "diagnostics": {"type": "array"}

@@ -102,7 +102,8 @@ func Load(ctx context.Context, path, root string) (*Database, error) {
 			Message:  fmt.Sprintf("compilation database not found: %s", path),
 			ExitCode: exitcode.Usage,
 			Remediation: "Generate one with CMake: cmake -S . -B build " +
-				"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, then set project.compdb.",
+				"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON, or enable a CMake File API " +
+				"codemodel-v2 query in the build directory, then set project.compdb.",
 		}
 	}
 	data, err := os.ReadFile(path)
@@ -124,11 +125,16 @@ func Load(ctx context.Context, path, root string) (*Database, error) {
 			ExitCode: exitcode.Usage,
 		}
 	}
+	return buildDatabase(ctx, entries, path, root, fsutil.HashString(string(data)))
+}
 
+// buildDatabase validates and normalizes raw entries. It is shared by the
+// compile_commands.json loader and the CMake File API fallback.
+func buildDatabase(ctx context.Context, entries []Entry, path, root, sha string) (*Database, error) {
 	db := &Database{
 		Path:   path,
 		Root:   root,
-		SHA256: fsutil.HashString(string(data)),
+		SHA256: sha,
 	}
 	tripleCache := map[string]string{}
 	seen := map[string]bool{}

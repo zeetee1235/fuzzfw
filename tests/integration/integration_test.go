@@ -330,6 +330,25 @@ func TestMemorySanitizerFinding(t *testing.T) {
 	}
 }
 
+func TestCppMemorySanitizerFinding(t *testing.T) {
+	project := fixture("cpp_msan")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 1 {
+		t.Fatalf("C++ MSan check exit = %d, want 1\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	findings := summary["findings"].([]any)
+	if len(findings) == 0 {
+		t.Fatal("C++ MSan finding missing")
+	}
+	finding := findings[0].(map[string]any)
+	if finding["kind"] != "memory:use-of-uninitialized-value" || finding["origin"] != "target_crash" {
+		t.Fatalf("unexpected C++ MSan finding: %v", finding)
+	}
+}
+
 func TestOutputCapacityOverrunDetected(t *testing.T) {
 	project := fixture("c_output")
 	ensureBuild(t, project)
@@ -342,6 +361,44 @@ func TestOutputCapacityOverrunDetected(t *testing.T) {
 	findings := summary["findings"].([]any)
 	if len(findings) == 0 || findings[0].(map[string]any)["origin"] != "target_crash" {
 		t.Fatalf("unexpected findings: %v", findings)
+	}
+}
+
+func TestLocalAliasInterprocedural(t *testing.T) {
+	project := fixture("c_alias")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("alias check exit = %d\n%s", code, stderr)
+	}
+	analysisData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "analysis.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var analysis map[string]any
+	if err := json.Unmarshal(analysisData, &analysis); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, raw := range analysis["functions"].([]any) {
+		fn := raw.(map[string]any)
+		if fn["name"] != "alias_handler" {
+			continue
+		}
+		for _, rawCall := range fn["direct_callees"].([]any) {
+			call := rawCall.(map[string]any)
+			if call["name"] != "read_cursor" {
+				continue
+			}
+			args := call["arguments"].([]any)
+			if len(args) == 1 && args[0].(float64) == 0 {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("local alias was not mapped to the caller parameter")
 	}
 }
 
@@ -396,6 +453,28 @@ func TestCommandDictionaryGenerated(t *testing.T) {
 	}
 	if got := target["commands_covered"].(float64); got != 1 {
 		t.Fatalf("commands_covered = %v, want 1 for the benign command seed", got)
+	}
+	planData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan map[string]any
+	if err := json.Unmarshal(planData, &plan); err != nil {
+		t.Fatal(err)
+	}
+	planned := plan["targets"].([]any)[0].(map[string]any)
+	names, _ := planned["command_names"].([]any)
+	foundName := false
+	for _, name := range names {
+		if name == "CMD_BUG" {
+			foundName = true
+		}
+	}
+	if !foundName {
+		t.Fatalf("enum command name missing: %v", names)
+	}
+	if !strings.Contains(string(data), "CMD_BUG") {
+		t.Fatalf("command name missing from dictionary: %s", data)
 	}
 }
 
@@ -456,6 +535,198 @@ func TestLengthPrefixedSequencePasses(t *testing.T) {
 	}
 }
 
+func TestExistingHarnessReused(t *testing.T) {
+	project := fixture("c_existing_harness")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("existing harness check exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["status"] != "selftest_passed" || target["entry_hit"] != true {
+		t.Fatalf("unexpected target: %v", target)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".fuzzfw", "generated", "existing_harness", "harness.c")); err == nil {
+		t.Fatal("existing harness was replaced by a generated harness")
+	}
+	buildInfo, err := os.ReadFile(filepath.Join(out, "build-info.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(buildInfo, &document); err != nil {
+		t.Fatal(err)
+	}
+	result := document["targets"].([]any)[0].(map[string]any)["result"].(map[string]any)
+	if source, _ := result["harness_source_path"].(string); !strings.HasSuffix(source, "existing_harness.c") {
+		t.Fatalf("harness source = %v", result["harness_source_path"])
+	}
+}
+
+func TestFrameAwareLibFuzzerMutator(t *testing.T) {
+	project := fixture("c_sequence")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "libfuzzer",
+		"--time", "2s", "--jobs", "1", "--output", out, "--no-minimize", "--quiet")
+	if code == 2 || code == 3 {
+		t.Skipf("libFuzzer toolchain not available: %s", stderr)
+	}
+	if code != 0 {
+		t.Fatalf("frame mutator fuzz exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	if summary["metrics"].(map[string]any)["cases_fuzzed"].(float64) < 1 {
+		t.Fatalf("frame mutator run did not execute: %v", summary["metrics"])
+	}
+	if _, err := os.Stat(filepath.Join(project, ".fuzzfw", "generated", "frame_value", "frame_mutator.c")); err != nil {
+		t.Fatalf("frame mutator was not generated: %v", err)
+	}
+}
+
+func TestMultiTargetParallelPasses(t *testing.T) {
+	project := fixture("c_multi")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("parallel check exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	targets := summary["targets"].([]any)
+	want := []string{"parse_alpha", "parse_beta", "parse_gamma"}
+	if len(targets) != len(want) {
+		t.Fatalf("targets = %v", targets)
+	}
+	for index, target := range targets {
+		item := target.(map[string]any)
+		if item["name"] != want[index] || item["status"] != "selftest_passed" {
+			t.Fatalf("target %d = %v", index, item)
+		}
+	}
+	_, stderr, code = runCLI(t, project, "fuzz", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("parallel fuzz exit = %d\n%s", code, stderr)
+	}
+}
+
+func TestTLVFramingPasses(t *testing.T) {
+	project := fixture("c_tlv")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("TLV check exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["corpus_frames"].(float64) != 2 {
+		t.Fatalf("corpus_frames = %v", target["corpus_frames"])
+	}
+	harness, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "generated", "tlv_frame", "harness.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(harness), "fuzzfw_frame_len -= 2;") ||
+		!strings.Contains(string(harness), "((uint64_t)input[fuzzfw_offset + 0] << 8)") {
+		t.Fatalf("framing not emitted:\n%s", harness)
+	}
+}
+
+func TestUARTAdapterStreamPasses(t *testing.T) {
+	testAdapterStream(t, "c_uart", "uart_process", "uart_rx", "UART_Read")
+}
+
+func TestNetworkAdapterStreamPasses(t *testing.T) {
+	testAdapterStream(t, "c_network", "network_process", "network_rx", "NET_Recv")
+}
+
+func testAdapterStream(t *testing.T, name, targetName, eventModel, symbol string) {
+	t.Helper()
+	project := fixture(name)
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("%s check exit = %d\n%s", name, code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["name"] != targetName || target["status"] != "selftest_passed" || target["entry_hit"] != true {
+		t.Fatalf("unexpected target: %v", target)
+	}
+	planData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan map[string]any
+	if err := json.Unmarshal(planData, &plan); err != nil {
+		t.Fatal(err)
+	}
+	planned := plan["targets"].([]any)[0].(map[string]any)
+	if planned["input_model"].(map[string]any)["kind"] != "adapter_stream" {
+		t.Fatalf("input model = %v", planned["input_model"])
+	}
+	adapters := planned["adapters"].([]any)
+	if len(adapters) != 1 || adapters[0].(map[string]any)["event_model"] != eventModel ||
+		adapters[0].(map[string]any)["original_symbol"] != symbol {
+		t.Fatalf("adapters = %v", adapters)
+	}
+}
+
+func TestUnitTestContextExtraction(t *testing.T) {
+	project := fixture("c_unit_test")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("unit-test context check exit = %d\n%s", code, stderr)
+	}
+	planData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan map[string]any
+	if err := json.Unmarshal(planData, &plan); err != nil {
+		t.Fatal(err)
+	}
+	target := plan["targets"].([]any)[0].(map[string]any)
+	if target["unit_test_context"] != "tests/test_parser.c:test_parser" {
+		t.Fatalf("unit_test_context = %v", target["unit_test_context"])
+	}
+	harness, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "generated", "parser_process", "harness.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(harness), "test_setup();") || !strings.Contains(string(harness), "test_teardown();") {
+		t.Fatalf("extracted setup/teardown missing:\n%s", harness)
+	}
+}
+
+func TestCppConstructorPasses(t *testing.T) {
+	project := fixture("cpp_constructor")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("constructor check exit = %d\n%s", code, stderr)
+	}
+	harness, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "generated", "parser_feed_constructor", "harness.cpp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(harness), "Parser fuzzfw_object(3);") {
+		t.Fatalf("constructor call missing:\n%s", harness)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["status"] != "selftest_passed" || target["entry_hit"] != true {
+		t.Fatalf("unexpected target: %v", target)
+	}
+}
+
 func TestJSMNFirmwarePilotPasses(t *testing.T) {
 	project := pilot("jsmn")
 	ensureBuild(t, project)
@@ -495,6 +766,39 @@ func TestJSMNFirmwarePilotLibFuzzer(t *testing.T) {
 	}
 }
 
+func TestCommandTableExtraction(t *testing.T) {
+	project := fixture("c_command_table")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 1 {
+		t.Fatalf("command table check exit = %d, want 1\n%s", code, stderr)
+	}
+	planData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan map[string]any
+	if err := json.Unmarshal(planData, &plan); err != nil {
+		t.Fatal(err)
+	}
+	target := plan["targets"].([]any)[0].(map[string]any)
+	if len(target["command_constants"].([]any)) != 2 {
+		t.Fatalf("command_constants = %v", target["command_constants"])
+	}
+	names := map[string]bool{}
+	for _, raw := range target["command_names"].([]any) {
+		names[raw.(string)] = true
+	}
+	if !names["ping"] || !names["bug"] {
+		t.Fatalf("command_names = %v", target["command_names"])
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	if len(summary["findings"].([]any)) < 1 {
+		t.Fatal("command table seed did not reproduce a finding")
+	}
+}
+
 func TestCommandSeedsSynthesized(t *testing.T) {
 	project := fixture("c_command_seeds")
 	ensureBuild(t, project)
@@ -511,6 +815,11 @@ func TestCommandSeedsSynthesized(t *testing.T) {
 	target := summary["targets"].([]any)[0].(map[string]any)
 	if target["commands_covered"].(float64) != 2 || target["command_constants"].(float64) != 2 {
 		t.Fatalf("command coverage = %v/%v", target["commands_covered"], target["command_constants"])
+	}
+	if target["corpus_removed"].(float64) == 0 ||
+		target["corpus_selected"].(float64) >= target["corpus_inputs"].(float64) {
+		t.Fatalf("corpus dedup metrics = inputs:%v selected:%v removed:%v",
+			target["corpus_inputs"], target["corpus_selected"], target["corpus_removed"])
 	}
 	seedPath := filepath.Join(out, "corpus", "command_seed_entry", "fuzzfw-command-01-1")
 	data, err := os.ReadFile(seedPath)

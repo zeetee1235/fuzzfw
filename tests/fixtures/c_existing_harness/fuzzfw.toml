@@ -1,0 +1,22 @@
+schema_version = 1
+
+[project]
+name = "c-existing-harness-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "existing_harness"
+symbol = "LLVMFuzzerTestOneInput"
+source = "src/parser.c"
+header = "include/parser.h"
+required = true
+input = "existing_harness"
+existing_harness_source = "harness/existing_harness.c"
+max_input_bytes = 64
+seeds = ["seeds"]

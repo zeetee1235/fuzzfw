@@ -130,6 +130,7 @@ type Function struct {
 	HardwareFlags   []string   `json:"hardware_flags,omitempty"`
 	Constants       []string   `json:"constants,omitempty"`
 	CaseConstants   []string   `json:"case_constants,omitempty"`
+	CaseNames       []string   `json:"case_names,omitempty"`
 	Reasons         []string   `json:"reasons,omitempty"`
 	Evidence        []Evidence `json:"evidence,omitempty"`
 }

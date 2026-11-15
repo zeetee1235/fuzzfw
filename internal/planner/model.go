@@ -118,6 +118,13 @@ type EventHook struct {
 	Phase  string `json:"phase"`
 }
 
+// FramePlan describes an explicit length-prefixed frame envelope.
+type FramePlan struct {
+	LengthBytes    int    `json:"length_bytes"`
+	Endian         string `json:"endian"`
+	IncludesHeader bool   `json:"includes_header,omitempty"`
+}
+
 // ContextObjectPlan describes an explicit C context allocation and lifecycle.
 type ContextObjectPlan struct {
 	Arg            int    `json:"arg"`
@@ -130,12 +137,13 @@ type ContextObjectPlan struct {
 
 // FactoryPlan describes an explicit C++ object construction/destruction path.
 type FactoryPlan struct {
-	Symbol     string `json:"symbol"`
-	ClassType  string `json:"class_type"`
-	ReturnType string `json:"return_type"`
-	Style      string `json:"style"` // value, reference, pointer, unique_ptr, shared_ptr
-	Lifetime   string `json:"lifetime,omitempty"`
-	Destroy    string `json:"destroy,omitempty"`
+	Symbol     string   `json:"symbol"`
+	ClassType  string   `json:"class_type"`
+	ReturnType string   `json:"return_type"`
+	Style      string   `json:"style"` // value, reference, pointer, unique_ptr, shared_ptr, constructor
+	Lifetime   string   `json:"lifetime,omitempty"`
+	Destroy    string   `json:"destroy,omitempty"`
+	Arguments  []string `json:"arguments,omitempty"`
 }
 
 // AdapterBinding is an approved platform boundary replacement.
@@ -161,47 +169,51 @@ type WrapperPlan struct {
 
 // TargetPlan is one planned entry boundary.
 type TargetPlan struct {
-	Name             string             `json:"name"`
-	Symbol           string             `json:"symbol"`
-	FunctionID       string             `json:"function_id,omitempty"`
-	QualifiedName    string             `json:"qualified_name,omitempty"`
-	Signature        string             `json:"signature,omitempty"`
-	MangledName      string             `json:"mangled_name,omitempty"`
-	Source           string             `json:"source,omitempty"`
-	Header           string             `json:"header,omitempty"`
-	Language         string             `json:"language,omitempty"`
-	VariantID        string             `json:"variant_id,omitempty"`
-	Classification   string             `json:"classification"`
-	Status           string             `json:"status"`
-	Required         bool               `json:"required"`
-	InputModel       InputModel         `json:"input_model"`
-	Roles            []RoleBinding      `json:"role_bindings"`
-	Constraints      []Constraint       `json:"constraints"`
-	Context          ContextPlan        `json:"context"`
-	Platform         PlatformPlan       `json:"platform"`
-	Analysis         AnalysisEvidence   `json:"analysis"`
-	Adapters         []AdapterBinding   `json:"adapters,omitempty"`
-	Dependencies     []string           `json:"required_translation_units,omitempty"`
-	DirectCallees    []analyzer.CallRef `json:"direct_callees,omitempty"`
-	Reasons          []string           `json:"reasons,omitempty"`
-	Diagnostics      []diag.Diagnostic  `json:"diagnostics,omitempty"`
-	MaxInputBytes    int                `json:"max_input_bytes"`
-	OutputBytes      int                `json:"output_bytes,omitempty"`
-	MaxFrames        int                `json:"max_frames,omitempty"`
-	StateProbe       string             `json:"state_probe,omitempty"`
-	FrameReset       string             `json:"frame_reset,omitempty"`
-	InvariantCheck   string             `json:"invariant_check,omitempty"`
-	InvariantArgs    int                `json:"invariant_args,omitempty"`
-	CommandSeeds     bool               `json:"command_seeds,omitempty"`
-	Seeds            []string           `json:"seeds,omitempty"`
-	Dictionary       []string           `json:"dictionary,omitempty"`
-	CommandConstants []string           `json:"command_constants,omitempty"`
-	Wrapper          *WrapperPlan       `json:"wrapper,omitempty"`
-	Factory          *FactoryPlan       `json:"factory,omitempty"`
-	ContextObject    *ContextObjectPlan `json:"context_object,omitempty"`
-	IsStaticMethod   bool               `json:"is_static_method,omitempty"`
-	Events           []EventHook        `json:"events,omitempty"`
-	Function         *analyzer.Function `json:"-"`
+	Name                  string             `json:"name"`
+	Symbol                string             `json:"symbol"`
+	FunctionID            string             `json:"function_id,omitempty"`
+	QualifiedName         string             `json:"qualified_name,omitempty"`
+	Signature             string             `json:"signature,omitempty"`
+	MangledName           string             `json:"mangled_name,omitempty"`
+	Source                string             `json:"source,omitempty"`
+	Header                string             `json:"header,omitempty"`
+	Language              string             `json:"language,omitempty"`
+	VariantID             string             `json:"variant_id,omitempty"`
+	Classification        string             `json:"classification"`
+	Status                string             `json:"status"`
+	Required              bool               `json:"required"`
+	InputModel            InputModel         `json:"input_model"`
+	Roles                 []RoleBinding      `json:"role_bindings"`
+	Constraints           []Constraint       `json:"constraints"`
+	Context               ContextPlan        `json:"context"`
+	Platform              PlatformPlan       `json:"platform"`
+	Analysis              AnalysisEvidence   `json:"analysis"`
+	Adapters              []AdapterBinding   `json:"adapters,omitempty"`
+	Dependencies          []string           `json:"required_translation_units,omitempty"`
+	DirectCallees         []analyzer.CallRef `json:"direct_callees,omitempty"`
+	Reasons               []string           `json:"reasons,omitempty"`
+	Diagnostics           []diag.Diagnostic  `json:"diagnostics,omitempty"`
+	MaxInputBytes         int                `json:"max_input_bytes"`
+	OutputBytes           int                `json:"output_bytes,omitempty"`
+	MaxFrames             int                `json:"max_frames,omitempty"`
+	StateProbe            string             `json:"state_probe,omitempty"`
+	FrameReset            string             `json:"frame_reset,omitempty"`
+	InvariantCheck        string             `json:"invariant_check,omitempty"`
+	InvariantArgs         int                `json:"invariant_args,omitempty"`
+	CommandSeeds          bool               `json:"command_seeds,omitempty"`
+	ExistingHarnessSource string             `json:"existing_harness_source,omitempty"`
+	Framing               FramePlan          `json:"framing,omitempty"`
+	UnitTestContext       string             `json:"unit_test_context,omitempty"`
+	Seeds                 []string           `json:"seeds,omitempty"`
+	Dictionary            []string           `json:"dictionary,omitempty"`
+	CommandConstants      []string           `json:"command_constants,omitempty"`
+	CommandNames          []string           `json:"command_names,omitempty"`
+	Wrapper               *WrapperPlan       `json:"wrapper,omitempty"`
+	Factory               *FactoryPlan       `json:"factory,omitempty"`
+	ContextObject         *ContextObjectPlan `json:"context_object,omitempty"`
+	IsStaticMethod        bool               `json:"is_static_method,omitempty"`
+	Events                []EventHook        `json:"events,omitempty"`
+	Function              *analyzer.Function `json:"-"`
 }
 
 // MarshalJSON keeps collection contracts as arrays rather than null.

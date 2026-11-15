@@ -16,6 +16,8 @@ import (
 // a protocol grammar.
 func BuildDictionary(fn *analyzer.Function, fact *analyzer.IRFunctionFact) []string {
 	values := append([]string(nil), fn.Constants...)
+	values = append(values, fn.CaseConstants...)
+	values = append(values, fn.CaseNames...)
 	if fact != nil {
 		for _, arg := range fact.Arguments {
 			for _, use := range arg.ObservedUse {

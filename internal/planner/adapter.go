@@ -48,7 +48,7 @@ var validNondeterminism = map[string]bool{
 }
 
 var validEventModels = map[string]bool{
-	"": true, "none": true, "uart_rx": true, "dma_completion": true,
+	"": true, "none": true, "uart_rx": true, "network_rx": true, "dma_completion": true,
 	"isr_callback": true, "rtos_event": true,
 }
 

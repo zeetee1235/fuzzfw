@@ -84,19 +84,33 @@ func (b *Builder) Build(target planner.TargetPlan, hp *harness.Plan) (*Result, e
 		}
 		result.DictionaryPath = dictionaryPath
 	}
-	source, extension, err := harness.Emit(hp, b.Cfg)
-	if err != nil {
-		result.Status = StatusHarnessBuildFailed
-		result.Diagnostics = append(result.Diagnostics, diag.Newf(diag.EHarnessBuild,
-			"cannot emit harness: %v", err).WithTarget(target.Name))
-		return result, nil
+	harnessPath := ""
+	if hp.Target.EntryKind == "existing_harness" {
+		harnessPath = absJoin(b.Cfg.Root, target.ExistingHarnessSource)
+		data, err := os.ReadFile(harnessPath)
+		if err != nil {
+			result.Status = StatusHarnessBuildFailed
+			result.Diagnostics = append(result.Diagnostics, diag.Newf(diag.EHarnessBuild,
+				"cannot read existing harness: %v", err).WithTarget(target.Name))
+			return result, nil
+		}
+		result.HarnessSourcePath = harnessPath
+		result.HarnessSHA256 = fsutil.HashString(string(data))
+	} else {
+		source, extension, err := harness.Emit(hp, b.Cfg)
+		if err != nil {
+			result.Status = StatusHarnessBuildFailed
+			result.Diagnostics = append(result.Diagnostics, diag.Newf(diag.EHarnessBuild,
+				"cannot emit harness: %v", err).WithTarget(target.Name))
+			return result, nil
+		}
+		harnessPath = filepath.Join(generatedDir, "harness"+extension)
+		if err := fsutil.WriteFileAtomic(harnessPath, []byte(source), 0o644); err != nil {
+			return nil, err
+		}
+		result.HarnessSourcePath = harnessPath
+		result.HarnessSHA256 = fsutil.HashString(source)
 	}
-	harnessPath := filepath.Join(generatedDir, "harness"+extension)
-	if err := fsutil.WriteFileAtomic(harnessPath, []byte(source), 0o644); err != nil {
-		return nil, err
-	}
-	result.HarnessSourcePath = harnessPath
-	result.HarnessSHA256 = fsutil.HashString(source)
 
 	if err := b.runHostBuildCommand(logFile); err != nil {
 		result.Status = StatusHarnessBuildFailed
@@ -152,6 +166,28 @@ func (b *Builder) Build(target planner.TargetPlan, hp *harness.Plan) (*Result, e
 
 	if fuzzProfile != nil {
 		fuzzObjects, fuzzDelta, fuzzDiags, fuzzOK := b.compileTarget(target, hp, harnessPath, *fuzzProfile, logFile)
+		if fuzzOK && b.Engine == "libfuzzer" && hp.InputKind == "length_prefixed" && b.Cfg.File.Harness.FrameMutator {
+			mutatorSource, mutatorErr := harness.EmitMutator(hp)
+			if mutatorErr != nil {
+				fuzzOK = false
+				fuzzDiags = append(fuzzDiags, diag.Newf(diag.EHarnessBuild,
+					"cannot emit frame mutator: %v", mutatorErr).WithTarget(target.Name))
+			} else {
+				mutatorPath := filepath.Join(generatedDir, "frame_mutator.c")
+				if err := fsutil.WriteFileAtomic(mutatorPath, []byte(mutatorSource), 0o644); err != nil {
+					return nil, err
+				}
+				flags := append([]string{"-I", b.Cfg.Root}, fuzzProfile.CompileFlags...)
+				mutatorObject, mutatorDiag := b.compileOne(*fuzzProfile, "c", mutatorPath, flags,
+					filepath.Join(buildDir, "objects", fuzzProfile.Name), logFile)
+				if mutatorDiag != nil {
+					fuzzOK = false
+					fuzzDiags = append(fuzzDiags, *mutatorDiag)
+				} else {
+					fuzzObjects = append(fuzzObjects, mutatorObject)
+				}
+			}
+		}
 		mergeDelta(&result.Delta, fuzzDelta)
 		result.Diagnostics = append(result.Diagnostics, fuzzDiags...)
 		if fuzzOK {
@@ -370,7 +406,7 @@ func (b *Builder) buildSources(target planner.TargetPlan) []string {
 			out = append(out, path)
 		}
 	}
-	if target.Wrapper != nil && target.Source != "" {
+	if (target.Wrapper != nil || target.ExistingHarnessSource != "") && target.Source != "" {
 		path := absJoin(b.Cfg.Root, target.Source)
 		if !seen[path] {
 			seen[path] = true

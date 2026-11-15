@@ -83,6 +83,8 @@ type TargetSummary struct {
 	Dependencies        []string          `json:"required_translation_units,omitempty"`
 	Adapters            []AdapterSummary  `json:"adapters,omitempty"`
 	CorpusInputs        int               `json:"corpus_inputs,omitempty"`
+	CorpusSelected      int               `json:"corpus_selected,omitempty"`
+	CorpusRemoved       int               `json:"corpus_removed,omitempty"`
 	InputsWithData      int               `json:"inputs_with_frames,omitempty"`
 	CorpusFrames        uint64            `json:"corpus_frames,omitempty"`
 	DistinctStates      int               `json:"distinct_states,omitempty"`

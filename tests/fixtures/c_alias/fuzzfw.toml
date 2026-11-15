@@ -1,0 +1,21 @@
+schema_version = 1
+
+[project]
+name = "c-alias-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "alias_handler"
+symbol = "alias_handler"
+source = "src/alias.c"
+header = "include/alias.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 32
+seeds = ["seeds"]

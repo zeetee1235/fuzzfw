@@ -48,7 +48,8 @@ behavior.
   replay reports record frame count and a deterministic state hash.
 - Done: replay/build-info/summary record distinct `previous->current` state
   transitions; per-frame `invariant_check` supplies a semantic oracle.
-- Remaining: richer transition graph/state-targeted mutation.
+- Done: corpus deduplication by coverage/state/transition signature.
+- Remaining: richer transition graph and state-targeted mutation.
 
 ### 5. Command dispatch extraction — constant dictionary complete
 
@@ -62,13 +63,20 @@ behavior.
 - Done: `command_seeds = true` synthesizes minimal command and command+zero
   seeds, framed for `length_prefixed`; `c_command_seeds` detects its bug with
   replay alone.
-- Remaining: command name/table extraction and richer per-command framing.
+- Done: enum case labels produce `command_names`; numeric and name tokens are
+  included in the dictionary.
+- Done: command seeds honor explicit 1/2/4/8-byte framing, endianness, and
+  header-inclusive lengths.
+- Done: command dispatch tables are detected by name hint (`command`, `cmd`,
+  `dispatch`, `opcode`); numeric IDs and string names are extracted from
+  initializer lists and merged into dictionary/seed synthesis.
 
 ## P1 — precision
 
-- Interprocedural input taint (caller/callee argument mapping) — complete in the
-  deterministic local-call form. Expressions that do not map directly to a
-  parameter stay unknown.
+- Interprocedural input taint (caller/callee argument mapping) — complete for
+  the deterministic local-call form, including simple local assignment and
+  local struct-member aliases. Whole-program points-to and cross-TU alias
+  reasoning remain conservative/unknown.
 - Return/output invariant oracle — complete in explicit hook form
   (`invariant_check = "symbol"`), with R1 triage and honggfuzz discovery.
 - Protocol-aware corpus quality metrics — frame/state coverage recorded per
@@ -77,11 +85,16 @@ behavior.
 - Real firmware pilot — complete for `jsmn` at pinned commit
   `25647e692c7906b96ffd2b05ca54c097948e879c`: replay pass and 4.8M libFuzzer
   executions with no finding; see `docs/pilots.md`.
-- Grammar/state-aware mutation only after the deterministic harness work.
+- Existing unit-test setup/teardown extraction — limited to direct zero-argument
+  calls around the target callsite; nested/object construction remains explicit.
+- Grammar/state-aware mutation — frame-aware libFuzzer custom mutator for
+  `length_prefixed` targets, including configurable TLV framing. honggfuzz
+  continues to use its built-in mutator plus the dictionary.
 - Optional MSan profile is accepted with an explicit incompatibility check and
-  validated end-to-end by `c_msan` (`memory:use-of-uninitialized-value` at R1).
-  integer/local-bounds profiles are implemented. C++ MSan still requires an
-  MSan-instrumented C++ runtime/toolchain.
+  validated end-to-end by `c_msan` and `cpp_msan`
+  (`memory:use-of-uninitialized-value` at R1). integer/local-bounds profiles are
+  implemented. Complex C++ standard-library code may still require an
+  MSan-instrumented libc++ runtime.
 
 ## Non-goals
 

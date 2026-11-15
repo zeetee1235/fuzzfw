@@ -59,6 +59,7 @@ type Plan struct {
 	OutputBytes   int                      `json:"output_bytes,omitempty"`
 	InputKind     string                   `json:"input_kind,omitempty"`
 	MaxFrames     int                      `json:"max_frames,omitempty"`
+	Framing       planner.FramePlan        `json:"framing,omitempty"`
 	Validations   []string                 `json:"validations"`
 	Provenance    []string                 `json:"provenance"`
 	Diagnostics   []diag.Diagnostic        `json:"diagnostics,omitempty"`
@@ -66,6 +67,31 @@ type Plan struct {
 
 // BuildPlan converts a planner target into the canonical harness plan.
 func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
+	if target.ExistingHarnessSource != "" {
+		plan := &Plan{
+			SchemaVersion: SchemaVersion,
+			Generator:     "fuzzfw-harness/" + version.Version,
+			Target: Target{
+				Name:         target.Name,
+				Language:     target.Language,
+				EntryKind:    "existing_harness",
+				LinkSymbol:   target.Symbol,
+				CallSymbol:   target.Symbol,
+				Source:       target.ExistingHarnessSource,
+				BuildVariant: target.VariantID,
+			},
+			Constraints: target.Constraints,
+			Context:     target.Context,
+			Platform:    target.Platform,
+			Analysis:    target.Analysis,
+			Validations: defaultValidations(),
+			Provenance:  append([]string{"explicit_config", "existing_harness"}, target.Analysis.Provenance...),
+		}
+		if err := plan.Finalize(); err != nil {
+			return nil, err
+		}
+		return plan, nil
+	}
 	if target.Wrapper != nil {
 		plan := &Plan{
 			SchemaVersion: SchemaVersion,
@@ -88,6 +114,7 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 			OutputBytes: target.OutputBytes,
 			InputKind:   target.InputModel.Kind,
 			MaxFrames:   target.MaxFrames,
+			Framing:     target.Framing,
 			Provenance:  append([]string{"explicit_config", "user_wrapper", "fuzzfw_harness"}, target.Analysis.Provenance...),
 		}
 		if err := plan.Finalize(); err != nil {
@@ -98,7 +125,8 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 	if target.Header == "" {
 		return nil, fmt.Errorf("target %s has no header declaration", target.Name)
 	}
-	if target.InputModel.BufferArg < 0 || target.InputModel.LengthArg < 0 {
+	if target.InputModel.Kind != "adapter_stream" &&
+		(target.InputModel.BufferArg < 0 || target.InputModel.LengthArg < 0) {
 		return nil, fmt.Errorf("target %s has no bytes+length role binding", target.Name)
 	}
 	plan := &Plan{
@@ -134,6 +162,7 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 		OutputBytes:  target.OutputBytes,
 		InputKind:    target.InputModel.Kind,
 		MaxFrames:    target.MaxFrames,
+		Framing:      target.Framing,
 		Provenance:   append([]string{"project_build", "ast", "fuzzfw_harness"}, target.Analysis.Provenance...),
 	}
 	if plan.Target.LinkSymbol == "" {
@@ -214,6 +243,10 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 		return "", "", fmt.Errorf("unsupported target language %q", plan.Target.Language)
 	}
 
+	adapterStream := plan.InputKind == "adapter_stream"
+	if adapterStream && len(plan.RoleBindings) != 0 {
+		return "", "", fmt.Errorf("adapter_stream harness must not have argument roles")
+	}
 	roles := map[int]planner.RoleBinding{}
 	for _, role := range plan.RoleBindings {
 		if role.Role == "" || role.Role == planner.RoleUnknown {
@@ -252,7 +285,7 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 			return "", "", fmt.Errorf("argument %d has unsupported role %s", arg, role.Role)
 		}
 	}
-	if bufferArg < 0 || lengthArg < 0 {
+	if !adapterStream && (bufferArg < 0 || lengthArg < 0) {
 		return "", "", fmt.Errorf("harness plan lacks fuzz buffer or logical length")
 	}
 
@@ -288,7 +321,7 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 			}
 		}
 	}
-	if lengthType == "" {
+	if lengthType == "" && !adapterStream {
 		return "", "", fmt.Errorf("logical length type missing")
 	}
 
@@ -357,6 +390,9 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 		case "pointer":
 			fmt.Fprintf(&b, "    auto *fuzzfw_object = %s();\n", plan.Target.Factory.Symbol)
 			b.WriteString("    if (fuzzfw_object == nullptr) return 0;\n")
+		case "constructor":
+			fmt.Fprintf(&b, "    %s fuzzfw_object(%s);\n", plan.Target.Factory.ClassType,
+				strings.Join(plan.Target.Factory.Arguments, ", "))
 		default:
 			return "", "", fmt.Errorf("unsupported factory style %q", plan.Target.Factory.Style)
 		}
@@ -489,7 +525,7 @@ func emitCall(b *strings.Builder, plan *Plan, args []string, capture, indent str
 			return fmt.Errorf("factory harness has no method name")
 		}
 		switch plan.Target.Factory.Style {
-		case "value", "reference":
+		case "value", "reference", "constructor":
 			invoke(fmt.Sprintf("fuzzfw_object.%s(%s)", method, strings.Join(args, ", ")))
 		case "unique_ptr", "shared_ptr", "pointer":
 			invoke(fmt.Sprintf("fuzzfw_object->%s(%s)", method, strings.Join(args, ", ")))
@@ -510,15 +546,32 @@ func emitSequence(b *strings.Builder, plan *Plan, roles map[int]planner.RoleBind
 	if maxFrames <= 0 {
 		maxFrames = 64
 	}
+	framing := plan.Framing
+	lengthBytes := framing.LengthBytes
+	if lengthBytes <= 0 {
+		lengthBytes = 4
+	}
+	endian := framing.Endian
+	if endian != "big" {
+		endian = "little"
+	}
 	b.WriteString("    size_t fuzzfw_offset = 0;\n")
 	b.WriteString("    unsigned fuzzfw_frames = 0;\n")
-	fmt.Fprintf(b, "    while (fuzzfw_offset + 4 <= size && fuzzfw_frames < %d) {\n", maxFrames)
-	fmt.Fprintf(b, "        uint32_t fuzzfw_frame_len = (uint32_t)%s[fuzzfw_offset] |\n", baseExpr)
-	fmt.Fprintf(b, "            ((uint32_t)%s[fuzzfw_offset + 1] << 8) |\n", baseExpr)
-	fmt.Fprintf(b, "            ((uint32_t)%s[fuzzfw_offset + 2] << 16) |\n", baseExpr)
-	fmt.Fprintf(b, "            ((uint32_t)%s[fuzzfw_offset + 3] << 24);\n", baseExpr)
-	b.WriteString("        fuzzfw_offset += 4;\n")
-	b.WriteString("        if ((size_t)fuzzfw_frame_len > size - fuzzfw_offset) break;\n")
+	fmt.Fprintf(b, "    while (fuzzfw_offset + %d <= size && fuzzfw_frames < %d) {\n", lengthBytes, maxFrames)
+	b.WriteString("        uint64_t fuzzfw_frame_len = 0;\n")
+	for i := 0; i < lengthBytes; i++ {
+		shift := i * 8
+		if endian == "big" {
+			shift = (lengthBytes - 1 - i) * 8
+		}
+		fmt.Fprintf(b, "        fuzzfw_frame_len |= ((uint64_t)%s[fuzzfw_offset + %d] << %d);\n", baseExpr, i, shift)
+	}
+	fmt.Fprintf(b, "        fuzzfw_offset += %d;\n", lengthBytes)
+	if framing.IncludesHeader {
+		fmt.Fprintf(b, "        if (fuzzfw_frame_len < %d) break;\n", lengthBytes)
+		fmt.Fprintf(b, "        fuzzfw_frame_len -= %d;\n", lengthBytes)
+	}
+	b.WriteString("        if (fuzzfw_frame_len > size - fuzzfw_offset) break;\n")
 	for _, role := range roles {
 		if role.Role == planner.RoleLogicalLength {
 			if macro := lengthGuardMacro(role.Type); macro != "" {
@@ -747,4 +800,104 @@ func emitInvariant(b *strings.Builder, plan *Plan, hasOutput bool, indent string
 	default:
 		fmt.Fprintf(b, "%s/* invariant check has unsupported arity */\n", indent)
 	}
+}
+
+// EmitMutator renders a libFuzzer custom mutator that preserves the configured
+// frame envelope while mutating payloads or adding/removing frames.
+func EmitMutator(plan *Plan) (string, error) {
+	if plan.InputKind != "length_prefixed" {
+		return "", fmt.Errorf("frame mutator requires length_prefixed input")
+	}
+	framing := plan.Framing
+	lengthBytes := framing.LengthBytes
+	if lengthBytes <= 0 {
+		lengthBytes = 4
+	}
+	endian := framing.Endian
+	if endian != "big" {
+		endian = "little"
+	}
+	maxFrames := plan.MaxFrames
+	if maxFrames <= 0 {
+		maxFrames = 64
+	}
+	if maxFrames > 64 {
+		maxFrames = 64
+	}
+	var b strings.Builder
+	b.WriteString("/* GENERATED by fuzzfw; do not edit. */\n")
+	b.WriteString("/* SPDX-License-Identifier: Apache-2.0 */\n")
+	b.WriteString("#include <stddef.h>\n#include <stdint.h>\n#include <string.h>\n\n")
+	b.WriteString("extern size_t LLVMFuzzerMutate(uint8_t *data, size_t size, size_t max_size);\n\n")
+	fmt.Fprintf(&b, "#define FUZZFW_HEADER %d\n", lengthBytes)
+	fmt.Fprintf(&b, "#define FUZZFW_INCLUDES_HEADER %d\n", boolInt(framing.IncludesHeader))
+	fmt.Fprintf(&b, "#define FUZZFW_MAX_FRAMES %d\n", maxFrames)
+	b.WriteString("#define FUZZFW_MUTATOR_SLOTS 64u\n\n")
+	b.WriteString("static uint64_t fuzzfw_next(uint64_t *state) {\n")
+	b.WriteString("    uint64_t x = *state;\n")
+	b.WriteString("    x ^= x << 13; x ^= x >> 7; x ^= x << 17;\n")
+	b.WriteString("    *state = x;\n    return x;\n}\n\n")
+	b.WriteString("static uint64_t fuzzfw_get_len(const uint8_t *p) {\n")
+	b.WriteString("    uint64_t value = 0;\n")
+	for i := 0; i < lengthBytes; i++ {
+		shift := i * 8
+		if endian == "big" {
+			shift = (lengthBytes - 1 - i) * 8
+		}
+		fmt.Fprintf(&b, "    value |= ((uint64_t)p[%d] << %d);\n", i, shift)
+	}
+	b.WriteString("    return value;\n}\n\n")
+	b.WriteString("static void fuzzfw_put_len(uint8_t *p, uint64_t value) {\n")
+	for i := 0; i < lengthBytes; i++ {
+		shift := i * 8
+		if endian == "big" {
+			shift = (lengthBytes - 1 - i) * 8
+		}
+		fmt.Fprintf(&b, "    p[%d] = (uint8_t)(value >> %d);\n", i, shift)
+	}
+	b.WriteString("}\n\n")
+	b.WriteString("size_t LLVMFuzzerCustomMutator(uint8_t *data, size_t size, size_t max_size, unsigned int seed) {\n")
+	b.WriteString("    if (size < FUZZFW_HEADER || max_size < FUZZFW_HEADER + 1u) {\n")
+	b.WriteString("        return LLVMFuzzerMutate(data, size, max_size);\n    }\n")
+	b.WriteString("    size_t offsets[FUZZFW_MUTATOR_SLOTS];\n")
+	b.WriteString("    size_t lengths[FUZZFW_MUTATOR_SLOTS];\n")
+	b.WriteString("    unsigned count = 0;\n    size_t offset = 0;\n")
+	b.WriteString("    while (offset + FUZZFW_HEADER <= size && count < FUZZFW_MUTATOR_SLOTS && count < FUZZFW_MAX_FRAMES) {\n")
+	b.WriteString("        uint64_t encoded = fuzzfw_get_len(data + offset);\n")
+	b.WriteString("        uint64_t payload = encoded;\n")
+	b.WriteString("        if (FUZZFW_INCLUDES_HEADER) {\n")
+	b.WriteString("            if (encoded < FUZZFW_HEADER) break;\n")
+	b.WriteString("            payload = encoded - FUZZFW_HEADER;\n")
+	b.WriteString("        }\n")
+	b.WriteString("        if (payload > size - offset - FUZZFW_HEADER) break;\n")
+	b.WriteString("        offsets[count] = offset;\n        lengths[count] = (size_t)payload;\n        count++;\n")
+	b.WriteString("        offset += FUZZFW_HEADER + (size_t)payload;\n    }\n")
+	b.WriteString("    if (count == 0) return LLVMFuzzerMutate(data, size, max_size);\n")
+	b.WriteString("    uint64_t state = seed ? seed : 1u;\n")
+	b.WriteString("    switch (fuzzfw_next(&state) % 3u) {\n")
+	b.WriteString("    case 0: {\n        unsigned frame = (unsigned)(fuzzfw_next(&state) % count);\n")
+	b.WriteString("        if (lengths[frame] == 0) return size;\n")
+	b.WriteString("        size_t at = offsets[frame] + FUZZFW_HEADER + (size_t)(fuzzfw_next(&state) % lengths[frame]);\n")
+	b.WriteString("        data[at] ^= (uint8_t)(fuzzfw_next(&state) >> 8);\n        return size;\n    }\n")
+	b.WriteString("    case 1: {\n        if (count >= FUZZFW_MAX_FRAMES || max_size - size <= FUZZFW_HEADER) return size;\n")
+	b.WriteString("        size_t available = max_size - size - FUZZFW_HEADER;\n")
+	b.WriteString("        size_t payload_len = 1u + (size_t)(fuzzfw_next(&state) % (available < 8u ? available : 8u));\n")
+	b.WriteString("        uint64_t encoded = payload_len;\n")
+	b.WriteString("        if (FUZZFW_INCLUDES_HEADER) encoded += FUZZFW_HEADER;\n")
+	b.WriteString("        fuzzfw_put_len(data + size, encoded);\n")
+	b.WriteString("        for (size_t i = 0; i < payload_len; i++) data[size + FUZZFW_HEADER + i] = (uint8_t)fuzzfw_next(&state);\n")
+	b.WriteString("        return size + FUZZFW_HEADER + payload_len;\n    }\n")
+	b.WriteString("    default: {\n        if (count <= 1) return size;\n")
+	b.WriteString("        unsigned frame = (unsigned)(fuzzfw_next(&state) % count);\n")
+	b.WriteString("        size_t start = offsets[frame];\n        size_t end = start + FUZZFW_HEADER + lengths[frame];\n")
+	b.WriteString("        memmove(data + start, data + end, size - end);\n        return size - (end - start);\n    }\n")
+	b.WriteString("    }\n}\n")
+	return b.String(), nil
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

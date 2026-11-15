@@ -1,0 +1,26 @@
+schema_version = 1
+
+[project]
+name = "c-uart-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "uart_process"
+symbol = "uart_process"
+source = "src/uart.c"
+header = "include/uart.h"
+required = true
+input = "adapter_stream"
+max_input_bytes = 32
+seeds = ["seeds"]
+
+[[adapters]]
+original_symbol = "UART_Read"
+replacement_source = "tests/fuzzfw/adapters/uart.c"
+contract = "tests/fuzzfw/contracts/uart.json"

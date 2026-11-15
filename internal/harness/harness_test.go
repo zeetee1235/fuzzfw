@@ -228,3 +228,51 @@ func TestInvariantCheckOutputEmission(t *testing.T) {
 		}
 	}
 }
+
+func TestSequenceHarnessFraming(t *testing.T) {
+	plan := testPlan(t)
+	plan.CopyInput = true
+	plan.InputKind = "length_prefixed"
+	plan.MaxFrames = 4
+	plan.Framing = planner.FramePlan{LengthBytes: 2, Endian: "big", IncludesHeader: true}
+	source, _, err := Emit(plan, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"while (fuzzfw_offset + 2 <= size",
+		"((uint64_t)input[fuzzfw_offset + 0] << 8)",
+		"((uint64_t)input[fuzzfw_offset + 1] << 0)",
+		"fuzzfw_frame_len -= 2;",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing %q in:\n%s", want, source)
+		}
+	}
+}
+
+func TestFrameMutatorSource(t *testing.T) {
+	plan := testPlan(t)
+	plan.InputKind = "length_prefixed"
+	plan.MaxFrames = 8
+	plan.Framing = planner.FramePlan{LengthBytes: 2, Endian: "big", IncludesHeader: true}
+	source, err := EmitMutator(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"LLVMFuzzerCustomMutator",
+		"#define FUZZFW_HEADER 2",
+		"#define FUZZFW_INCLUDES_HEADER 1",
+		"((uint64_t)p[0] << 8)",
+		"memmove(data + start, data + end, size - end)",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing %q in:\n%s", want, source)
+		}
+	}
+	plan.InputKind = "bytes_length"
+	if _, err := EmitMutator(plan); err == nil {
+		t.Fatal("mutator should reject non-framed input")
+	}
+}

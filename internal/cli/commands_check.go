@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fuzzfw/fuzzfw/internal/artifacts"
+	"github.com/fuzzfw/fuzzfw/internal/config"
 	"github.com/fuzzfw/fuzzfw/internal/diag"
 	"github.com/fuzzfw/fuzzfw/internal/engine"
 	"github.com/fuzzfw/fuzzfw/internal/exitcode"
@@ -162,93 +163,34 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 	triageStarted := time.Now()
 	engineFailed := map[string]bool{}
 	fuzzTimedOut := map[string]bool{}
-	for _, result := range results {
-		target, ok := plan.Target(result.Name)
-		if !ok {
+	runs := make([]checkTargetRun, len(results))
+	if err := parallelIndexes(len(results), cfg.File.CI.TargetJobs, func(index int) error {
+		runs[index] = runCheckTarget(ctx, cfg, plan, state, out, fuzzEngine, engineName, results[index],
+			requiredSet, perTarget, jobs, fuzzDeadline)
+		return runs[index].err
+	}); err != nil {
+		return exitcode.Incomplete, err
+	}
+	for _, run := range runs {
+		if run.name == "" {
 			continue
 		}
-		built := result
-		selftestSeconds += built.Result.Selftest.DurationSeconds
-		summary := summarizeTarget(target, &built.Result, nil)
-		summary.Required = requiredSet[target.Name] || summary.Required
-		summaries[target.Name] = summary
-		if built.Result.SelftestBinary == "" {
-			allDiagnostics = append(allDiagnostics, diag.Newf(diag.EHarnessBuild,
-				"target %s has no self-test binary", target.Name).WithTarget(target.Name))
-			continue
+		selftestSeconds += run.selftestSeconds
+		casesReplayed += run.casesReplayed
+		casesFuzzed += run.casesFuzzed
+		allDiagnostics = append(allDiagnostics, run.diagnostics...)
+		if run.summary.Name != "" {
+			summaries[run.name] = run.summary
 		}
-		corpusDir, _, err := prepareCorpus(cfg, out, target)
-		if err != nil {
-			return exitcode.Incomplete, err
+		if run.findings != nil {
+			allFindings = append(allFindings, run.findings...)
+			findingsByTarget[run.name] = run.findings
 		}
-		raw, quality, replayDiags := replayCorpus(ctx, cfg, out, target, &built.Result)
-		casesReplayed += quality.Inputs
-		allDiagnostics = append(allDiagnostics, replayDiags...)
-		if summary, ok := summaries[target.Name]; ok {
-			summary.CorpusInputs = quality.Inputs
-			summary.InputsWithData = quality.InputsWithData
-			summary.CorpusFrames = quality.Frames
-			summary.DistinctStates = len(quality.StateHashes)
-			summary.StateHashes = quality.StateHashes
-			summary.DistinctTransitions = len(quality.Transitions)
-			summary.Transitions = quality.Transitions
-			summary.CommandConstants = quality.CommandConstants
-			summary.CommandsCovered = quality.CommandsCovered
-			summaries[target.Name] = summary
+		if run.engineFailed {
+			engineFailed[run.name] = true
 		}
-		for _, selftestCase := range built.Result.Selftest.Cases {
-			if selftestCase.Crash && (selftestCase.Origin == "target_crash" || selftestCase.Origin == "target_invariant") && selftestCase.InputPath != "" {
-				raw = append(raw, engine.RawFinding{
-					Path: absJoinPath(cfg.Root, selftestCase.InputPath), Kind: selftestCase.Sanitizer,
-					Target: target.Name, Engine: "selftest",
-				})
-			}
-		}
-		if engineName != "replay" && built.Result.FuzzBinary != "" {
-			remaining := time.Until(fuzzDeadline)
-			if remaining < time.Second {
-				fuzzTimedOut[target.Name] = true
-				allDiagnostics = append(allDiagnostics, diag.New(diag.ETimeoutInfra,
-					"global fuzz budget exhausted before target "+target.Name).WithTarget(target.Name))
-			} else {
-				targetBudget := perTarget
-				if targetBudget > remaining {
-					targetBudget = remaining
-				}
-				runResult, runErr := fuzzEngine.Run(ctx, target.Name, &built.Result, corpusDir, out.TargetEngine(target.Name), targetBudget, jobs, target.MaxInputBytes, built.Result.DictionaryPath)
-				if runErr != nil {
-					engineFailed[target.Name] = true
-					allDiagnostics = append(allDiagnostics, diag.Newf(diag.EEngineFailed,
-						"engine %s failed for %s: %v", engineName, target.Name, runErr).WithTarget(target.Name))
-				} else {
-					casesFuzzed += runResult.Executions
-					raw = append(raw, runResult.RawFindings...)
-				}
-			}
-		}
-		ctxInfo := triage.Context{
-			BuildManifestSHA256:   state.BuildManifestSHA256,
-			AdapterManifestSHA256: adapterFingerprint(target),
-			BuildProfile:          plan.PlanID,
-		}
-		findings, triageDiags, err := triage.Process(ctx, cfg, out, target, &built.Result, raw, ctxInfo)
-		if err != nil {
-			return exitcode.Incomplete, err
-		}
-		allDiagnostics = append(allDiagnostics, triageDiags...)
-		allFindings = append(allFindings, findings...)
-		findingsByTarget[target.Name] = findings
-		if built.Result.Status == "smoke_crashed" && hasTargetCrash(findings) {
-			// A seed that already crashes the target is a product finding, not
-			// a harness failure. The build command still fails closed; check
-			// reports the reproduced target finding through the finding path.
-			summary := summaries[target.Name]
-			if built.Result.FuzzBinary != "" {
-				summary.Status = "fuzzable"
-			} else {
-				summary.Status = "selftest_passed"
-			}
-			summaries[target.Name] = summary
+		if run.fuzzTimedOut {
+			fuzzTimedOut[run.name] = true
 		}
 	}
 	triageDuration := time.Since(triageStarted)
@@ -355,4 +297,121 @@ func absJoinPath(root, path string) string {
 		return path
 	}
 	return filepath.Join(root, path)
+}
+
+type checkTargetRun struct {
+	name            string
+	summary         report.TargetSummary
+	findings        []triage.Finding
+	diagnostics     []diag.Diagnostic
+	casesReplayed   int
+	casesFuzzed     int
+	selftestSeconds float64
+	engineFailed    bool
+	fuzzTimedOut    bool
+	err             error
+}
+
+func runCheckTarget(
+	ctx context.Context,
+	cfg *config.Config,
+	plan *planner.Plan,
+	state *buildState,
+	out *artifacts.Output,
+	fuzzEngine engine.Engine,
+	engineName string,
+	result targetBuild,
+	requiredSet map[string]bool,
+	perTarget time.Duration,
+	jobs int,
+	fuzzDeadline time.Time,
+) checkTargetRun {
+	run := checkTargetRun{name: result.Name}
+	target, ok := plan.Target(result.Name)
+	if !ok {
+		return run
+	}
+	built := result
+	run.selftestSeconds = built.Result.Selftest.DurationSeconds
+	summary := summarizeTarget(target, &built.Result, nil)
+	summary.Required = requiredSet[target.Name] || summary.Required
+	run.summary = summary
+	if built.Result.SelftestBinary == "" {
+		run.diagnostics = append(run.diagnostics, diag.Newf(diag.EHarnessBuild,
+			"target %s has no self-test binary", target.Name).WithTarget(target.Name))
+		return run
+	}
+	corpusDir, _, err := prepareCorpus(cfg, out, target)
+	if err != nil {
+		run.err = err
+		return run
+	}
+	raw, quality, replayDiags := replayCorpus(ctx, cfg, out, target, &built.Result)
+	run.casesReplayed = quality.Inputs
+	run.diagnostics = append(run.diagnostics, replayDiags...)
+	summary = run.summary
+	summary.CorpusInputs = quality.Inputs
+	summary.CorpusSelected = quality.Selected
+	summary.CorpusRemoved = quality.Removed
+	summary.InputsWithData = quality.InputsWithData
+	summary.CorpusFrames = quality.Frames
+	summary.DistinctStates = len(quality.StateHashes)
+	summary.StateHashes = quality.StateHashes
+	summary.DistinctTransitions = len(quality.Transitions)
+	summary.Transitions = quality.Transitions
+	summary.CommandConstants = quality.CommandConstants
+	summary.CommandsCovered = quality.CommandsCovered
+	run.summary = summary
+	for _, selftestCase := range built.Result.Selftest.Cases {
+		if selftestCase.Crash && (selftestCase.Origin == "target_crash" || selftestCase.Origin == "target_invariant") && selftestCase.InputPath != "" {
+			raw = append(raw, engine.RawFinding{
+				Path: absJoinPath(cfg.Root, selftestCase.InputPath), Kind: selftestCase.Sanitizer,
+				Target: target.Name, Engine: "selftest",
+			})
+		}
+	}
+	if engineName != "replay" && built.Result.FuzzBinary != "" {
+		remaining := time.Until(fuzzDeadline)
+		if remaining < time.Second {
+			run.fuzzTimedOut = true
+			run.diagnostics = append(run.diagnostics, diag.New(diag.ETimeoutInfra,
+				"global fuzz budget exhausted before target "+target.Name).WithTarget(target.Name))
+		} else {
+			targetBudget := perTarget
+			if targetBudget > remaining {
+				targetBudget = remaining
+			}
+			runResult, runErr := fuzzEngine.Run(ctx, target.Name, &built.Result, corpusDir, out.TargetEngine(target.Name), targetBudget, jobs, target.MaxInputBytes, built.Result.DictionaryPath)
+			if runErr != nil {
+				run.engineFailed = true
+				run.diagnostics = append(run.diagnostics, diag.Newf(diag.EEngineFailed,
+					"engine %s failed for %s: %v", engineName, target.Name, runErr).WithTarget(target.Name))
+			} else {
+				run.casesFuzzed = runResult.Executions
+				raw = append(raw, runResult.RawFindings...)
+			}
+		}
+	}
+	ctxInfo := triage.Context{
+		BuildManifestSHA256:   state.BuildManifestSHA256,
+		AdapterManifestSHA256: adapterFingerprint(target),
+		BuildProfile:          plan.PlanID,
+	}
+	findings, triageDiags, err := triage.Process(ctx, cfg, out, target, &built.Result, raw, ctxInfo)
+	if err != nil {
+		run.err = err
+		return run
+	}
+	run.findings = findings
+	run.diagnostics = append(run.diagnostics, triageDiags...)
+	summary = run.summary
+	if built.Result.Status == "smoke_crashed" && hasTargetCrash(findings) {
+		if built.Result.FuzzBinary != "" {
+			summary.Status = "fuzzable"
+		} else {
+			summary.Status = "selftest_passed"
+		}
+	}
+	run.summary = summary
+	return run
 }

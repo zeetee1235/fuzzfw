@@ -8,10 +8,12 @@ import (
 	"time"
 
 	"github.com/fuzzfw/fuzzfw/internal/artifacts"
+	"github.com/fuzzfw/fuzzfw/internal/config"
 	"github.com/fuzzfw/fuzzfw/internal/diag"
 	"github.com/fuzzfw/fuzzfw/internal/engine"
 	"github.com/fuzzfw/fuzzfw/internal/exitcode"
 	"github.com/fuzzfw/fuzzfw/internal/fsutil"
+	"github.com/fuzzfw/fuzzfw/internal/planner"
 	"github.com/fuzzfw/fuzzfw/internal/report"
 	"github.com/fuzzfw/fuzzfw/internal/toolchain"
 	"github.com/fuzzfw/fuzzfw/internal/triage"
@@ -116,73 +118,20 @@ func runFuzz(ctx context.Context, global globalOptions, args []string) (int, err
 	selftestSeconds := 0.0
 	fuzzStarted := time.Now()
 	triageStarted := time.Now()
-	for _, name := range builtNames {
-		target, ok := plan.Target(name)
-		if !ok {
-			continue
-		}
-		built, _ := state.target(name)
-		selftestSeconds += built.Result.Selftest.DurationSeconds
-		corpusDir, _, err := prepareCorpus(cfg, out, target)
-		if err != nil {
-			return exitcode.Incomplete, err
-		}
-		raw, quality, replayDiags := replayCorpus(ctx, cfg, out, target, &built.Result)
-		casesReplayed += quality.Inputs
-		allDiagnostics = append(allDiagnostics, replayDiags...)
-		for _, selftestCase := range built.Result.Selftest.Cases {
-			if selftestCase.Crash && (selftestCase.Origin == "target_crash" || selftestCase.Origin == "target_invariant") && selftestCase.InputPath != "" {
-				raw = append(raw, engine.RawFinding{
-					Path: absJoinPath(cfg.Root, selftestCase.InputPath), Kind: selftestCase.Sanitizer,
-					Target: target.Name, Engine: "selftest",
-				})
-			}
-		}
-		if engineName != "replay" {
-			if built.Result.FuzzBinary == "" {
-				allDiagnostics = append(allDiagnostics, diag.Newf(diag.EEngineUnavailable,
-					"target %s has no fuzz binary for engine %s", name, engineName).WithTarget(name))
-			} else {
-				runResult, err := fuzzEngine.Run(ctx, name, &built.Result, corpusDir, out.TargetEngine(name), perTarget, jobs, target.MaxInputBytes, built.Result.DictionaryPath)
-				if err != nil {
-					allDiagnostics = append(allDiagnostics, diag.Newf(diag.EEngineFailed,
-						"engine %s failed for %s: %v", engineName, name, err).WithTarget(name))
-				} else {
-					casesFuzzed += runResult.Executions
-					raw = append(raw, runResult.RawFindings...)
-
-				}
-			}
-		}
-		ctxInfo := triage.Context{
-			BuildManifestSHA256:   state.BuildManifestSHA256,
-			AdapterManifestSHA256: adapterFingerprint(target),
-			BuildProfile:          plan.PlanID,
-		}
-		findings, triageDiags, err := triage.Process(ctx, cfg, out, target, &built.Result, raw, ctxInfo)
-		if err != nil {
-			return exitcode.Incomplete, err
-		}
-		allDiagnostics = append(allDiagnostics, triageDiags...)
-		allFindings = append(allFindings, findings...)
-		sum := summarizeTarget(target, &built.Result, findings)
-		sum.CorpusInputs = quality.Inputs
-		sum.InputsWithData = quality.InputsWithData
-		sum.CorpusFrames = quality.Frames
-		sum.DistinctStates = len(quality.StateHashes)
-		sum.StateHashes = quality.StateHashes
-		sum.DistinctTransitions = len(quality.Transitions)
-		sum.Transitions = quality.Transitions
-		sum.CommandConstants = quality.CommandConstants
-		sum.CommandsCovered = quality.CommandsCovered
-		if built.Result.Status == "smoke_crashed" && hasTargetCrash(findings) {
-			if built.Result.FuzzBinary != "" {
-				sum.Status = "fuzzable"
-			} else {
-				sum.Status = "selftest_passed"
-			}
-		}
-		summaries = append(summaries, sum)
+	runs := make([]fuzzTargetRun, len(builtNames))
+	if err := parallelIndexes(len(builtNames), cfg.File.CI.TargetJobs, func(index int) error {
+		runs[index] = runFuzzTarget(ctx, cfg, plan, state, out, fuzzEngine, engineName, builtNames[index], perTarget, jobs)
+		return runs[index].err
+	}); err != nil {
+		return exitcode.Incomplete, err
+	}
+	for _, run := range runs {
+		allFindings = append(allFindings, run.findings...)
+		allDiagnostics = append(allDiagnostics, run.diagnostics...)
+		summaries = append(summaries, run.summary)
+		casesReplayed += run.casesReplayed
+		casesFuzzed += run.casesFuzzed
+		selftestSeconds += run.selftestSeconds
 	}
 	fuzzSeconds := time.Since(fuzzStarted).Seconds()
 	triageSeconds := time.Since(triageStarted).Seconds()
@@ -216,4 +165,99 @@ func runFuzz(ctx context.Context, global globalOptions, args []string) (int, err
 		}
 	}
 	return summary.ExitCode, nil
+}
+
+type fuzzTargetRun struct {
+	summary         report.TargetSummary
+	findings        []triage.Finding
+	diagnostics     []diag.Diagnostic
+	casesReplayed   int
+	casesFuzzed     int
+	selftestSeconds float64
+	err             error
+}
+
+func runFuzzTarget(
+	ctx context.Context,
+	cfg *config.Config,
+	plan *planner.Plan,
+	state *buildState,
+	out *artifacts.Output,
+	fuzzEngine engine.Engine,
+	engineName, name string,
+	perTarget time.Duration,
+	jobs int,
+) fuzzTargetRun {
+	run := fuzzTargetRun{}
+	target, ok := plan.Target(name)
+	if !ok {
+		run.err = fmt.Errorf("target %q not found in plan", name)
+		return run
+	}
+	built, _ := state.target(name)
+	run.selftestSeconds = built.Result.Selftest.DurationSeconds
+	corpusDir, _, err := prepareCorpus(cfg, out, target)
+	if err != nil {
+		run.err = err
+		return run
+	}
+	raw, quality, replayDiags := replayCorpus(ctx, cfg, out, target, &built.Result)
+	run.casesReplayed = quality.Inputs
+	run.diagnostics = append(run.diagnostics, replayDiags...)
+	for _, selftestCase := range built.Result.Selftest.Cases {
+		if selftestCase.Crash && (selftestCase.Origin == "target_crash" || selftestCase.Origin == "target_invariant") && selftestCase.InputPath != "" {
+			raw = append(raw, engine.RawFinding{
+				Path: absJoinPath(cfg.Root, selftestCase.InputPath), Kind: selftestCase.Sanitizer,
+				Target: target.Name, Engine: "selftest",
+			})
+		}
+	}
+	if engineName != "replay" {
+		if built.Result.FuzzBinary == "" {
+			run.diagnostics = append(run.diagnostics, diag.Newf(diag.EEngineUnavailable,
+				"target %s has no fuzz binary for engine %s", name, engineName).WithTarget(name))
+		} else {
+			runResult, err := fuzzEngine.Run(ctx, name, &built.Result, corpusDir, out.TargetEngine(name), perTarget, jobs, target.MaxInputBytes, built.Result.DictionaryPath)
+			if err != nil {
+				run.diagnostics = append(run.diagnostics, diag.Newf(diag.EEngineFailed,
+					"engine %s failed for %s: %v", engineName, name, err).WithTarget(name))
+			} else {
+				run.casesFuzzed = runResult.Executions
+				raw = append(raw, runResult.RawFindings...)
+			}
+		}
+	}
+	ctxInfo := triage.Context{
+		BuildManifestSHA256:   state.BuildManifestSHA256,
+		AdapterManifestSHA256: adapterFingerprint(target),
+		BuildProfile:          plan.PlanID,
+	}
+	findings, triageDiags, err := triage.Process(ctx, cfg, out, target, &built.Result, raw, ctxInfo)
+	if err != nil {
+		run.err = err
+		return run
+	}
+	run.findings = findings
+	run.diagnostics = append(run.diagnostics, triageDiags...)
+	sum := summarizeTarget(target, &built.Result, findings)
+	sum.CorpusInputs = quality.Inputs
+	sum.CorpusSelected = quality.Selected
+	sum.CorpusRemoved = quality.Removed
+	sum.InputsWithData = quality.InputsWithData
+	sum.CorpusFrames = quality.Frames
+	sum.DistinctStates = len(quality.StateHashes)
+	sum.StateHashes = quality.StateHashes
+	sum.DistinctTransitions = len(quality.Transitions)
+	sum.Transitions = quality.Transitions
+	sum.CommandConstants = quality.CommandConstants
+	sum.CommandsCovered = quality.CommandsCovered
+	if built.Result.Status == "smoke_crashed" && hasTargetCrash(findings) {
+		if built.Result.FuzzBinary != "" {
+			sum.Status = "fuzzable"
+		} else {
+			sum.Status = "selftest_passed"
+		}
+	}
+	run.summary = sum
+	return run
 }

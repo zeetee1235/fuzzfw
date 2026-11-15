@@ -51,7 +51,8 @@ Evidence is collected from:
 3. LLVM IR `memory_read`, `memory_write`, `indexed`, `compare`,
    `compare_constant:<n>`, `branch`, `loop_bound`, `allocation_size`,
    `passed_to_call`, `may_escape`, `data_dependent`, and conservative
-   interprocedural argument-use propagation;
+   interprocedural argument-use propagation through direct parameters and
+   simple local assignment aliases;
 4. caller/unit-test evidence (future P1);
 5. explicit `targets.args` user contract.
 
@@ -230,8 +231,10 @@ wrapping is sometimes intentional and would otherwise create noise.
 The planner extracts integer/character/string constants from the target and
 comparison facts into a small deterministic dictionary. Switch-case constants
 and non-length comparison constants are also recorded separately as
-`command_constants`; corpus replay reports how many of those tokens appear in
-the prepared corpus.
+`command_constants`; enum case labels contribute both their numeric value and
+`command_names`. Command tables with name hints (`command`, `cmd`, `dispatch`,
+`opcode`) contribute numeric IDs and string names from their initializer lists.
+Corpus replay reports how many numeric tokens appear in the prepared corpus.
 
 With `command_seeds = true`, corpus preparation writes two minimal deterministic
 seeds per command token: the bare token and the token plus one zero byte. A
@@ -251,11 +254,24 @@ sequence of frames:
 u32_le length | payload | u32_le length | payload | ...
 ```
 
-Each valid frame gets its own exact-size copy and target call; setup/context/
-factory are constructed once, event hooks run per frame, and the frame count is
-bounded by `max_frames`. Truncated or oversized frames stop the sequence. The
-target still receives the original frame bytes; no protocol semantics are
-invented.
+The envelope is explicit and can match real TLV headers:
+
+```toml
+input = "length_prefixed"
+
+[targets.framing]
+length_bytes = 2
+endian = "big"
+includes_header = true
+```
+
+`includes_header = true` means the length field counts the header itself; the
+harness subtracts `length_bytes` before slicing the payload. Supported widths
+are 1/2/4/8 bytes. Each valid frame gets its own exact-size copy and target
+call; setup/context/factory are constructed once, event hooks run per frame, and
+the frame count is bounded by `max_frames`. Truncated or oversized frames stop
+the sequence. The target still receives the original frame payload; no
+protocol semantics are invented.
 
 `state_probe` observes the machine after each call. With a context it must be
 `int(context *)`; without one it must be `int(void)`. The observed value is
@@ -268,12 +284,22 @@ transitions.
 `void(void)` or `void(context *)` and is called after the probe and events for
 each frame. The whole-input `context.reset` remains the teardown reset.
 
+### Frame-aware libFuzzer mutation
+
+For `length_prefixed` targets, libFuzzer builds include a generated
+`LLVMFuzzerCustomMutator`. It parses the configured envelope and mutates payload
+bytes, appends a bounded frame, or removes a frame without corrupting the length
+prefixes. `harness.frame_mutator=false` disables it. honggfuzz does not consume
+this mutator.
+
 ### Corpus quality metrics
 
 Each `check`/`fuzz` run replays the prepared corpus and records per-target
 observation metrics:
 
 - `corpus_inputs`: files replayed;
+- `corpus_selected` / `corpus_removed`: inputs kept/removed by state/coverage
+  deduplication (`harness.corpus_dedup`);
 - `inputs_with_frames`: inputs that executed at least one target/frame call;
 - `corpus_frames`: maximum frames observed in one input;
 - `distinct_states` / `state_hashes`: distinct observed state hashes;
@@ -333,7 +359,22 @@ phase = "before"
 
 The generated harness binds a read-only input stream before the target, calls
 `before` hooks, invokes the target, calls `after` hooks, and clears the stream.
-Adapters read bytes with `fuzzfw_input_read()`. DMA requires
+Adapters read bytes with `fuzzfw_input_read()`.
+
+Zero-argument firmware entry points can use `input = "adapter_stream"` with a
+`uart_rx` or `network_rx` adapter:
+
+```toml
+input = "adapter_stream"
+
+[[adapters]]
+original_symbol = "UART_Read"
+replacement_source = "tests/fuzzfw/adapters/uart.c"
+contract = "tests/fuzzfw/contracts/uart.json"
+```
+
+The adapter owns the destination buffer and copies from the harness stream; no
+fuzz buffer/length is invented for the entry point. DMA requires
 `event_model=dma_completion`; deferred completion requires at least one event
 hook. ISR requires an `isr_callback` adapter or event hook. RTOS requires an
 `rtos_event` adapter and event hook. Direct MMIO and inline assembly remain
@@ -347,6 +388,55 @@ allowed to perform one-time initialization; the warm calls must have identical
 coverage and entry-hit results. Any difference reports `E_STATE_LEAK` and keeps
 the target out of `fuzzable` state. This catches static counters/state that
 would contaminate coverage and findings.
+
+## Unit-test context extraction
+
+A target can borrow setup/teardown from an existing unit-test callsite:
+
+```toml
+unit_test_source = "tests/test_parser.c"
+unit_test_function = "test_parser"
+```
+
+The analyzer finds direct zero-argument calls before and after the target call in
+that function, validates them as `void(void)` in the project analysis, and emits
+them as harness setup/teardown. Only direct top-level calls are considered;
+nested control flow and object construction remain explicit wrapper concerns.
+
+## C++ constructors
+
+A member function can declare its class constructor explicitly:
+
+```toml
+constructor = "Parser"
+constructor_args = ["3"]
+```
+
+The harness constructs a stack object with those literal arguments and calls the
+method on it. Supported argument literals are integers/floats, booleans,
+`nullptr`, and quoted strings. Constructor arity and class ownership are checked
+against the AST. Automatic object-graph construction remains out of scope; use a
+factory or wrapper for nested objects.
+
+## Existing libFuzzer harness reuse
+
+A project that already has a libFuzzer entry point can reuse it unchanged:
+
+```toml
+[[targets]]
+name = "existing_harness"
+symbol = "LLVMFuzzerTestOneInput"
+source = "src/parser.c"
+input = "existing_harness"
+existing_harness_source = "harness/existing_harness.c"
+seeds = ["seeds"]
+```
+
+No generated harness is written. The existing source is compiled with the same
+sanitizer/coverage profile, the replay driver calls its
+`LLVMFuzzerTestOneInput`, and the normal self-test/replay/fuzz gates still
+apply. `source` names the project translation unit to link and to borrow
+include flags from.
 
 ## Explicit wrapper escape hatch
 

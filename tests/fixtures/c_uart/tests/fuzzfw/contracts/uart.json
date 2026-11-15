@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "original_symbol": "UART_Read",
+  "prototype": "int(uint8_t *, size_t)",
+  "model": "input_source",
+  "effects": ["write_buffer", "return_status"],
+  "max_write": "requested",
+  "valid_context": "firmware UART receive path",
+  "nondeterminism": "none",
+  "event_model": "uart_rx",
+  "completion": "synchronous",
+  "ownership": "caller",
+  "limitations": ["single synchronous read from the harness stream", "no baud/error injection"]
+}

@@ -1,0 +1,39 @@
+schema_version = 1
+
+[project]
+name = "c-multi-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 2
+target_jobs = 3
+
+[[targets]]
+name = "parse_alpha"
+symbol = "parse_alpha"
+source = "src/multi.c"
+header = "include/multi.h"
+required = true
+max_input_bytes = 32
+seeds = ["seeds"]
+
+[[targets]]
+name = "parse_beta"
+symbol = "parse_beta"
+source = "src/multi.c"
+header = "include/multi.h"
+required = true
+max_input_bytes = 32
+seeds = ["seeds"]
+
+[[targets]]
+name = "parse_gamma"
+symbol = "parse_gamma"
+source = "src/multi.c"
+header = "include/multi.h"
+required = true
+max_input_bytes = 32
+seeds = ["seeds"]

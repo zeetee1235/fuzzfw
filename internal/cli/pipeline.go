@@ -6,10 +6,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/fuzzfw/fuzzfw/internal/analyzer"
@@ -77,7 +80,17 @@ func collectRevision(ctx context.Context, cfg *config.Config) string {
 }
 
 func loadDatabase(ctx context.Context, cfg *config.Config) (*compdb.Database, error) {
-	return compdb.Load(ctx, cfg.CompDB, cfg.Root)
+	db, err := compdb.Load(ctx, cfg.CompDB, cfg.Root)
+	if err == nil {
+		return db, nil
+	}
+	var diagnostic *diag.Error
+	if errors.As(err, &diagnostic) && diagnostic.Code == diag.ECompDBMissing {
+		if fileDB, fileErr := compdb.LoadCMakeFileAPI(ctx, filepath.Dir(cfg.CompDB), cfg.Root); fileErr == nil {
+			return fileDB, nil
+		}
+	}
+	return nil, err
 }
 
 func analyzeProject(ctx context.Context, cfg *config.Config, db *compdb.Database, tools *toolchain.Report) (*analyzer.Analysis, *manifest.Manifest, time.Duration, error) {
@@ -201,37 +214,90 @@ func buildTargets(
 	names []string,
 	engineName string,
 ) ([]targetBuild, []diag.Diagnostic, error) {
-	var results []targetBuild
-	var diagnostics []diag.Diagnostic
-	for _, name := range names {
-		target, ok := plan.Target(name)
-		if !ok {
-			diagnostics = append(diagnostics, diag.Newf(diag.ETargetNotFound, "target %s not found in plan", name))
-			continue
-		}
-		hp, err := harness.BuildPlan(target, cfg)
-		if err != nil {
-			result := hostbuild.Result{
-				Target: target.Name, Status: hostbuild.StatusHarnessBuildFailed,
-				Classification: target.Classification,
-				Diagnostics: []diag.Diagnostic{diag.Newf(diag.EHarnessBuild,
-					"cannot create harness plan: %v", err).WithTarget(target.Name)},
-			}
-			results = append(results, targetBuild{Name: target.Name, Result: result})
-			diagnostics = append(diagnostics, result.Diagnostics...)
-			continue
-		}
-		builder := hostbuild.Builder{
-			Ctx: ctx, Cfg: cfg, DB: db, Workspace: ws, Tools: tools, Engine: engineName,
-		}
-		result, err := builder.Build(target, hp)
-		if err != nil {
-			return results, diagnostics, err
-		}
-		results = append(results, targetBuild{Name: target.Name, Result: *result})
-		diagnostics = append(diagnostics, result.Diagnostics...)
+	results := make([]targetBuild, len(names))
+	diagnostics := make([][]diag.Diagnostic, len(names))
+	workers := cfg.File.CI.TargetJobs
+	if workers < 1 {
+		workers = 1
 	}
-	return results, diagnostics, nil
+	if len(cfg.File.Host.BuildCommand) > 0 {
+		// A user build command may write shared files; keep it serialized.
+		workers = 1
+	}
+	if workers > len(names) && len(names) > 0 {
+		workers = len(names)
+	}
+	indexes := make(chan int)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	for worker := 0; worker < workers; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range indexes {
+				result, diags, err := buildOneTarget(ctx, cfg, ws, db, tools, plan, names[index], engineName)
+				results[index] = result
+				diagnostics[index] = diags
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+	for index := range names {
+		indexes <- index
+	}
+	close(indexes)
+	wg.Wait()
+	if firstErr != nil {
+		return results, nil, firstErr
+	}
+	var flat []diag.Diagnostic
+	for _, diags := range diagnostics {
+		flat = append(flat, diags...)
+	}
+	return results, flat, nil
+}
+
+func buildOneTarget(
+	ctx context.Context,
+	cfg *config.Config,
+	ws *artifacts.Workspace,
+	db *compdb.Database,
+	tools *toolchain.Report,
+	plan *planner.Plan,
+	name string,
+	engineName string,
+) (targetBuild, []diag.Diagnostic, error) {
+	target, ok := plan.Target(name)
+	if !ok {
+		return targetBuild{Name: name}, []diag.Diagnostic{
+			diag.Newf(diag.ETargetNotFound, "target %s not found in plan", name),
+		}, nil
+	}
+	hp, err := harness.BuildPlan(target, cfg)
+	if err != nil {
+		result := hostbuild.Result{
+			Target: target.Name, Status: hostbuild.StatusHarnessBuildFailed,
+			Classification: target.Classification,
+			Diagnostics: []diag.Diagnostic{diag.Newf(diag.EHarnessBuild,
+				"cannot create harness plan: %v", err).WithTarget(target.Name)},
+		}
+		return targetBuild{Name: target.Name, Result: result}, result.Diagnostics, nil
+	}
+	builder := hostbuild.Builder{
+		Ctx: ctx, Cfg: cfg, DB: db, Workspace: ws, Tools: tools, Engine: engineName,
+	}
+	result, err := builder.Build(target, hp)
+	if err != nil {
+		return targetBuild{Name: target.Name}, nil, err
+	}
+	return targetBuild{Name: target.Name, Result: *result}, result.Diagnostics, nil
 }
 
 func saveBuildResults(cfg *config.Config, ws *artifacts.Workspace, plan *planner.Plan, analysisHash, manifestHash, toolchainHash string, results []targetBuild) (*buildState, error) {
@@ -343,6 +409,8 @@ type corpusQuality struct {
 	CommandConstants int
 	CommandsCovered  int
 	Transitions      []string
+	Selected         int
+	Removed          int
 }
 
 func replayCorpus(
@@ -372,6 +440,7 @@ func replayCorpus(
 			"cannot enumerate corpus for %s: %v", target.Name, err).WithTarget(target.Name)}
 	}
 	quality.Inputs = len(files)
+	signatures := map[string]bool{}
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
@@ -399,6 +468,23 @@ func replayCorpus(
 				quality.Frames = outcome.Report.Frames
 			}
 		}
+		signature := ""
+		if outcome.Report != nil {
+			signature = fmt.Sprintf("%s|%s|%s|%d", outcome.Report.CoverageHash, outcome.Report.StateHash,
+				strings.Join(outcome.Report.Transitions, ","), outcome.Report.Frames)
+		}
+		if signature != "" && signatures[signature] {
+			if cfg.File.Harness.CorpusDedup {
+				if err := os.Remove(file); err == nil {
+					quality.Removed++
+					continue
+				}
+			}
+		}
+		if signature != "" {
+			signatures[signature] = true
+		}
+		quality.Selected++
 		if outcome.Crashed {
 			raw = append(raw, engine.RawFinding{
 				Path: file, Kind: outcome.Kind, Target: target.Name, Engine: "corpus",
@@ -518,12 +604,22 @@ func writeCommandSeeds(corpusDir string, target planner.TargetPlan) error {
 			}
 			data := body
 			if target.InputModel.Kind == "length_prefixed" {
-				if len(body)+4 > maxInput {
+				lengthBytes := target.Framing.LengthBytes
+				if lengthBytes <= 0 {
+					lengthBytes = 4
+				}
+				if len(body)+lengthBytes > maxInput {
 					continue
 				}
-				data = make([]byte, 4+len(body))
-				binary.LittleEndian.PutUint32(data, uint32(len(body)))
-				copy(data[4:], body)
+				value := uint64(len(body))
+				if target.Framing.IncludesHeader {
+					value += uint64(lengthBytes)
+				}
+				data = make([]byte, lengthBytes+len(body))
+				if !putFrameLength(data, lengthBytes, target.Framing.Endian, value) {
+					continue
+				}
+				copy(data[lengthBytes:], body)
 			}
 			path := filepath.Join(corpusDir, fmt.Sprintf("fuzzfw-command-%02d-%d", index, variant))
 			if fsutil.Exists(path) {
@@ -535,4 +631,78 @@ func writeCommandSeeds(corpusDir string, target planner.TargetPlan) error {
 		}
 	}
 	return nil
+}
+
+func putFrameLength(data []byte, lengthBytes int, endian string, value uint64) bool {
+	switch lengthBytes {
+	case 1:
+		if value > 0xff {
+			return false
+		}
+		data[0] = byte(value)
+	case 2:
+		if value > 0xffff {
+			return false
+		}
+		if endian == "big" {
+			binary.BigEndian.PutUint16(data, uint16(value))
+		} else {
+			binary.LittleEndian.PutUint16(data, uint16(value))
+		}
+	case 4:
+		if value > 0xffffffff {
+			return false
+		}
+		if endian == "big" {
+			binary.BigEndian.PutUint32(data, uint32(value))
+		} else {
+			binary.LittleEndian.PutUint32(data, uint32(value))
+		}
+	case 8:
+		if endian == "big" {
+			binary.BigEndian.PutUint64(data, value)
+		} else {
+			binary.LittleEndian.PutUint64(data, value)
+		}
+	default:
+		return false
+	}
+	return true
+}
+
+func parallelIndexes(count, workers int, fn func(int) error) error {
+	if count <= 0 {
+		return nil
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > count {
+		workers = count
+	}
+	indexes := make(chan int)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	for worker := 0; worker < workers; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range indexes {
+				if err := fn(index); err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+	for index := 0; index < count; index++ {
+		indexes <- index
+	}
+	close(indexes)
+	wg.Wait()
+	return firstErr
 }

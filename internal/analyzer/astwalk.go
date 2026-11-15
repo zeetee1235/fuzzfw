@@ -21,11 +21,18 @@ type globalInfo struct {
 	Storage string
 }
 
+type tableInfo struct {
+	Values []string
+	Names  []string
+}
+
 type astIndex struct {
 	root          string
 	directory     string
 	contexts      map[string]string
 	globalIDs     map[string]globalInfo
+	commandTables map[string]tableInfo
+	enumValues    map[string]string
 	packedRecords map[string]bool
 }
 
@@ -35,6 +42,8 @@ func newASTIndex(root, directory string) *astIndex {
 		directory:     directory,
 		contexts:      map[string]string{},
 		globalIDs:     map[string]globalInfo{},
+		commandTables: map[string]tableInfo{},
+		enumValues:    map[string]string{},
 		packedRecords: map[string]bool{},
 	}
 }
@@ -51,6 +60,11 @@ func (idx *astIndex) indexContexts(nodes []astNode, parent, lastFile string) str
 			lastFile = file
 		}
 		qualified := parent
+		if node.Kind == "EnumConstantDecl" && node.ID != "" {
+			if value := firstIntegerLiteral(node); value != "" {
+				idx.enumValues[node.ID] = value
+			}
+		}
 		if isContextKind(node.Kind) && node.Name != "" {
 			qualified = joinQualified(parent, node.Name)
 			idx.contexts[node.ID] = qualified
@@ -78,6 +92,13 @@ func (idx *astIndex) indexGlobals(nodes []astNode, insideFunction bool) {
 				Type:    node.Type.QualType,
 				Const:   strings.Contains(node.Type.QualType, "const"),
 				Storage: node.StorageClass,
+			}
+			if tableNameHint(node.Name) {
+				var table tableInfo
+				collectTableLiterals(node, &table)
+				if len(table.Values) > 0 || len(table.Names) > 0 {
+					idx.commandTables[node.ID] = table
+				}
 			}
 		}
 		childInside := insideFunction || isFunctionKind(node.Kind)
@@ -178,6 +199,11 @@ func (idx *astIndex) collectNodes(
 			continue
 		}
 		childParent := parentCtx
+		if node.Kind == "EnumConstantDecl" && node.ID != "" {
+			if value := firstIntegerLiteral(node); value != "" {
+				idx.enumValues[node.ID] = value
+			}
+		}
 		if isContextKind(node.Kind) && node.Name != "" {
 			childParent = joinQualified(parentCtx, node.Name)
 			if mapped := idx.contexts[node.ID]; mapped != "" {
@@ -252,6 +278,7 @@ func (idx *astIndex) buildFunction(node *astNode, qualified, source string, vari
 	fn.HardwareFlags = sortedKeys(body.flags)
 	fn.Constants = uniqueStrings(body.constants)
 	fn.CaseConstants = uniqueStrings(body.cases)
+	fn.CaseNames = uniqueStrings(body.caseNames)
 	fn.Reasons = append(fn.Reasons, body.reasons...)
 	fn.Evidence = append(fn.Evidence, body.evidence...)
 	return fn
@@ -280,24 +307,29 @@ func functionID(fn Function) string {
 }
 
 type bodyInfo struct {
-	calls     []CallRef
-	constants []string
-	cases     []string
-	paramIDs  map[string]int
-	indirect  []string
-	reads     map[string]bool
-	writes    map[string]bool
-	flags     map[string]bool
-	evidence  []Evidence
-	reasons   []string
+	calls        []CallRef
+	constants    []string
+	cases        []string
+	caseNames    []string
+	paramIDs     map[string]int
+	aliases      map[string]int
+	fieldAliases map[string]int
+	indirect     []string
+	reads        map[string]bool
+	writes       map[string]bool
+	flags        map[string]bool
+	evidence     []Evidence
+	reasons      []string
 }
 
 func (idx *astIndex) analyzeBody(node *astNode, source string) bodyInfo {
 	info := bodyInfo{
-		reads:    map[string]bool{},
-		writes:   map[string]bool{},
-		flags:    map[string]bool{},
-		paramIDs: map[string]int{},
+		reads:        map[string]bool{},
+		writes:       map[string]bool{},
+		flags:        map[string]bool{},
+		paramIDs:     map[string]int{},
+		aliases:      map[string]int{},
+		fieldAliases: map[string]int{},
 	}
 	for _, child := range node.Inner {
 		if child.Kind == "ParmVarDecl" && child.ID != "" {
@@ -322,8 +354,28 @@ func (idx *astIndex) walkBody(node *astNode, source string, writeCtx bool, info 
 		}
 	}
 	if node.Kind == "CaseStmt" && len(node.Inner) > 0 {
-		if value := firstIntegerLiteral(&node.Inner[0]); value != "" {
+		if value := idx.caseValue(&node.Inner[0]); value != "" {
 			info.cases = append(info.cases, value)
+		}
+		if name := firstConstantName(&node.Inner[0]); name != "" {
+			info.caseNames = append(info.caseNames, name)
+		}
+	}
+	if node.Kind == "VarDecl" && node.ID != "" && len(node.Inner) > 0 {
+		if index, ok := resolveParamIndex(&node.Inner[len(node.Inner)-1], info); ok {
+			info.aliases[node.ID] = index
+		}
+	}
+	if node.Kind == "BinaryOperator" && isAssignmentOpcode(node.Opcode) && len(node.Inner) >= 2 {
+		if lhs := &node.Inner[0]; lhs.Kind == "DeclRefExpr" && lhs.ReferencedDecl != nil {
+			if index, ok := resolveParamIndex(&node.Inner[1], info); ok {
+				info.aliases[lhs.ReferencedDecl.ID] = index
+			}
+		}
+		if key, ok := memberAliasKey(&node.Inner[0]); ok {
+			if index, ok := resolveParamIndex(&node.Inner[1], info); ok {
+				info.fieldAliases[key] = index
+			}
 		}
 	}
 	if node.Kind == "GCCAsmStmt" || node.Kind == "MSAsmStmt" {
@@ -360,7 +412,7 @@ func (idx *astIndex) walkBody(node *astNode, source string, writeCtx bool, info 
 				seenCalls[key] = true
 				call.Source = source
 				call.Line = node.Loc.line()
-				call.Arguments = callArgumentIndices(node, info.paramIDs)
+				call.Arguments = callArgumentIndices(node, info)
 				info.calls = append(info.calls, call)
 				for flag, reason := range hardwareFlagsForCall(call.Name) {
 					info.flags[flag] = true
@@ -382,6 +434,10 @@ func (idx *astIndex) walkBody(node *astNode, source string, writeCtx bool, info 
 	}
 	if node.Kind == "DeclRefExpr" && node.ReferencedDecl != nil {
 		if global, ok := idx.globalIDs[node.ReferencedDecl.ID]; ok {
+			if table, exists := idx.commandTables[node.ReferencedDecl.ID]; exists {
+				info.cases = append(info.cases, table.Values...)
+				info.caseNames = append(info.caseNames, table.Names...)
+			}
 			info.reads[global.Name] = true
 			if writeCtx {
 				info.writes[global.Name] = true
@@ -536,6 +592,14 @@ func hardwareFlagsForCall(name string) map[string]string {
 	switch {
 	case strings.HasPrefix(name, "HAL_"), strings.HasPrefix(name, "LL_"):
 		flags["HAL_EXTERNAL"] = "known HAL namespace call: " + name
+	case strings.HasPrefix(upper, "UART_"), strings.HasPrefix(upper, "HAL_UART_"),
+		strings.HasPrefix(upper, "USART_"), strings.HasPrefix(lower, "uart_"):
+		flags["UART_RX"] = "UART-related call: " + name
+	case strings.HasPrefix(lower, "recv"), strings.HasPrefix(lower, "netconn_"),
+		strings.HasPrefix(lower, "lwip_"), strings.HasPrefix(lower, "net_"),
+		strings.HasPrefix(lower, "tcp_"), strings.HasPrefix(lower, "udp_"),
+		strings.HasPrefix(lower, "mqtt_"):
+		flags["NET_RX"] = "network receive call: " + name
 	case strings.HasPrefix(name, "DMA_"), strings.HasPrefix(lower, "dma_"), strings.Contains(lower, "dma"):
 		flags["DMA_ASYNC"] = "DMA-related call: " + name
 	case strings.Contains(upper, "IRQ"), strings.Contains(upper, "ISR"), strings.HasSuffix(upper, "_HANDLER"):
@@ -649,13 +713,13 @@ func astValueString(node *astNode) string {
 	return ""
 }
 
-func callArgumentIndices(node *astNode, params map[string]int) []int {
+func callArgumentIndices(node *astNode, info *bodyInfo) []int {
 	if len(node.Inner) <= 1 {
 		return nil
 	}
 	var indices []int
 	for i := 1; i < len(node.Inner); i++ {
-		if index, ok := parameterIndex(&node.Inner[i], params); ok {
+		if index, ok := resolveParamIndex(&node.Inner[i], info); ok {
 			indices = append(indices, index)
 		} else {
 			indices = append(indices, -1)
@@ -664,24 +728,55 @@ func callArgumentIndices(node *astNode, params map[string]int) []int {
 	return indices
 }
 
-func parameterIndex(node *astNode, params map[string]int) (int, bool) {
+func resolveParamIndex(node *astNode, info *bodyInfo) (int, bool) {
 	if node.Kind == "DeclRefExpr" && node.ReferencedDecl != nil {
-		index, ok := params[node.ReferencedDecl.ID]
-		return index, ok
+		if index, ok := info.paramIDs[node.ReferencedDecl.ID]; ok {
+			return index, true
+		}
+		if index, ok := info.aliases[node.ReferencedDecl.ID]; ok {
+			return index, true
+		}
 	}
 	switch node.Kind {
 	case "ImplicitCastExpr", "CStyleCastExpr", "CXXStaticCastExpr", "CXXReinterpretCastExpr",
-		"ParenExpr", "CXXBindTemporaryExpr", "MaterializeTemporaryExpr":
+		"CXXConstCastExpr", "ParenExpr", "CXXBindTemporaryExpr", "MaterializeTemporaryExpr",
+		"ArraySubscriptExpr", "UnaryOperator":
 		if len(node.Inner) > 0 {
-			return parameterIndex(&node.Inner[0], params)
+			return resolveParamIndex(&node.Inner[0], info)
+		}
+	case "MemberExpr":
+		if key, ok := memberAliasKey(node); ok {
+			if index, ok := info.fieldAliases[key]; ok {
+				return index, true
+			}
 		}
 	}
 	return 0, false
 }
 
+func memberAliasKey(node *astNode) (string, bool) {
+	for node.Kind == "ArraySubscriptExpr" || node.Kind == "ImplicitCastExpr" ||
+		node.Kind == "CStyleCastExpr" || node.Kind == "ParenExpr" {
+		if len(node.Inner) == 0 {
+			return "", false
+		}
+		node = &node.Inner[0]
+	}
+	if node.Kind != "MemberExpr" || node.Name == "" || len(node.Inner) == 0 {
+		return "", false
+	}
+	base := &node.Inner[0]
+	if base.Kind == "DeclRefExpr" && base.ReferencedDecl != nil {
+		return base.ReferencedDecl.ID + "." + node.Name, true
+	}
+	return "", false
+}
+
 func firstIntegerLiteral(node *astNode) string {
-	if node.Kind == "IntegerLiteral" {
-		return astValueString(node)
+	if node.Kind == "IntegerLiteral" || node.Kind == "ConstantExpr" || node.Kind == "CharacterLiteral" {
+		if value := astValueString(node); value != "" {
+			return value
+		}
 	}
 	for i := range node.Inner {
 		if value := firstIntegerLiteral(&node.Inner[i]); value != "" {
@@ -689,4 +784,60 @@ func firstIntegerLiteral(node *astNode) string {
 		}
 	}
 	return ""
+}
+
+func firstConstantName(node *astNode) string {
+	if node.ReferencedDecl != nil && node.ReferencedDecl.Kind == "EnumConstantDecl" && node.ReferencedDecl.Name != "" {
+		return node.ReferencedDecl.Name
+	}
+	for i := range node.Inner {
+		if name := firstConstantName(&node.Inner[i]); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+func (idx *astIndex) caseValue(node *astNode) string {
+	if node.Kind == "DeclRefExpr" && node.ReferencedDecl != nil {
+		if value := idx.enumValues[node.ReferencedDecl.ID]; value != "" {
+			return value
+		}
+	}
+	if node.Kind == "IntegerLiteral" || node.Kind == "ConstantExpr" || node.Kind == "CharacterLiteral" {
+		if value := astValueString(node); value != "" {
+			return value
+		}
+	}
+	for i := range node.Inner {
+		if value := idx.caseValue(&node.Inner[i]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func tableNameHint(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, "command") || strings.Contains(lower, "cmd") ||
+		strings.Contains(lower, "dispatch") || strings.Contains(lower, "opcode")
+}
+
+func collectTableLiterals(node *astNode, table *tableInfo) {
+	switch node.Kind {
+	case "IntegerLiteral", "CharacterLiteral":
+		if value := astValueString(node); value != "" {
+			table.Values = append(table.Values, value)
+		}
+	case "StringLiteral":
+		if value := astValueString(node); value != "" {
+			if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") && len(value) >= 2 {
+				value = value[1 : len(value)-1]
+			}
+			table.Names = append(table.Names, value)
+		}
+	}
+	for i := range node.Inner {
+		collectTableLiterals(&node.Inner[i], table)
+	}
 }

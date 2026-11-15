@@ -7,10 +7,10 @@
 | Host OS | Linux x86-64 | Primary target. Other Linux architectures are not release-validated. |
 | Go | 1.23+ | Single static control-plane binary. |
 | Clang/LLVM | 17+ | AST JSON fallback and native analyzers target modern Clang. |
-| Sanitizers | ASan, UBSan, LSan, MSan, TSan, integer, implicit-conversion, local-bounds, pointer-overflow, object-size | Default `address,undefined` with `-fno-sanitize-recover=all`. MSan is validated for C (`c_msan`); C++ MSan requires an instrumented runtime. MSan cannot be combined with ASan/TSan. |
+| Sanitizers | ASan, UBSan, LSan, MSan, TSan, integer, implicit-conversion, local-bounds, pointer-overflow, object-size | Default `address,undefined` with `-fno-sanitize-recover=all`. MSan is validated for C (`c_msan`) and simple C++ (`cpp_msan`); complex C++ standard-library code may require an instrumented libc++. MSan cannot be combined with ASan/TSan. |
 | CMake compdb | Yes | `compile_commands.json` with `arguments` or `command`. |
 | Make compdb | Yes, if a valid JSON compdb is produced | fuzzfw does not infer link commands from Makefiles. |
-| CMake File API | Not yet | P1. |
+| CMake File API | Yes | `codemodel-v2` fallback when `compile_commands.json` is absent. |
 | Arbitrary host build target | Manual via `build_command`, `link_objects`, `libraries` | No shell interpolation. |
 
 ## Languages
@@ -20,7 +20,8 @@
 | C11/C17 free/static functions with bytes+length | Implemented. |
 | C++17 free functions/namespaces | Implemented. |
 | C++ class methods with explicit factory | Supported for value, raw pointer + destroy, `unique_ptr`, and `shared_ptr` returns. |
-| C++ constructors / arbitrary object graphs | Blocked; explicit factory or wrapper required. |
+| C++ constructors | Explicit `constructor` with literal arguments; constructor arity/class checked via AST. |
+| Arbitrary C++ object graphs | Blocked; explicit factory or wrapper required. |
 | C++ reference-returning factory | Supported only with `factory_lifetime = "external"`; no automatic destruction. |
 | C++ static member functions | Supported directly without a factory. |
 | `static` function in a non-header TU | Blocked; direct external linkage is impossible without source/build changes. |
@@ -41,10 +42,10 @@
 | Pointer + length + capacity | Explicit `args` contract with `output_bytes`; no guessed equality. |
 | Output-only buffer | Explicit `OUTPUT_BUFFER`/`CAPACITY` roles; otherwise blocked. |
 | Context/object pointer | C context lifecycle via `[targets.context]`; C++ object pointer via factory. |
-| Stateful frames | `input = "length_prefixed"` with `state_probe` and `frame_reset`. |
+| Stateful frames | `input = "length_prefixed"` with `state_probe`, `frame_reset`, and explicit 1/2/4/8-byte framing. |
 | Post-call invariant | Explicit `invariant_check` hook (`int(int)` or return+output form). |
-| UART/network callback | P1 with approved adapter/event model; not implemented yet. |
-| Existing libFuzzer harness | Not reused in P0; wrapper path available. |
+| UART/network callback | `input = "adapter_stream"` with `uart_rx`/`network_rx` input-source adapters. |
+| Existing libFuzzer harness | Reused unchanged via `input = "existing_harness"`. |
 
 ## Engines
 
@@ -54,6 +55,7 @@
 | `libfuzzer` | Implemented and integration-tested with Clang. |
 | `honggfuzz` | Validated with upstream `hfuzz-clang`/`libhfuzz` persistent mode; wider version matrix still pending. |
 | Persistent target reset | Same-process coverage reset probe is mandatory by default; a leak reports `E_STATE_LEAK`. |
+| Multi-target scheduling | `ci.target_jobs` parallelizes build/check/fuzz while preserving plan order. |
 
 ## ABI and findings
 

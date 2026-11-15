@@ -3,6 +3,7 @@
 package planner
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,6 +108,8 @@ func Build(cfg *config.Config, analysis *analyzer.Analysis, analysisSHA string, 
 		switch {
 		case item.target == nil && item.fn == nil:
 			tp = missingTargetPlan(cfg, target)
+		case target.Input == "existing_harness":
+			tp = existingHarnessTargetPlan(cfg, target)
 		case target.WrapperSource != "":
 			tp = wrapperTargetPlan(cfg, analysis, target)
 		case item.fn == nil:
@@ -228,6 +231,46 @@ func functionTargetPlan(
 			tp.Context.Provenance = append(tp.Context.Provenance, "invariant_check")
 		}
 	}
+	if target.UnitTestSource != "" {
+		includeDirs, defines := variantCompileFlags(analysis, fn.VariantID)
+		info, err := analyzer.ExtractUnitTestContext(context.Background(), cfg, target.UnitTestSource,
+			target.UnitTestFunction, fn.Name, target.Name, includeDirs, defines)
+		if err != nil {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "unit-test context extraction failed")
+			tp.Diagnostics = append(tp.Diagnostics, diag.Newf(diag.EContextUnknown,
+				"unit-test context extraction failed: %v", err).WithTarget(target.Name))
+		} else {
+			valid := true
+			for _, symbol := range info.Setup {
+				if !hasVoidFunction(analysis, symbol) {
+					valid = false
+					tp.Diagnostics = append(tp.Diagnostics, diag.Newf(diag.EContextInvalid,
+						"unit-test setup %s must be declared as void(void)", symbol).WithTarget(target.Name))
+				} else if !contains(tp.Context.Setup, symbol) {
+					tp.Context.Setup = append(tp.Context.Setup, symbol)
+				}
+			}
+			for _, symbol := range info.Teardown {
+				if !hasVoidFunction(analysis, symbol) {
+					valid = false
+					tp.Diagnostics = append(tp.Diagnostics, diag.Newf(diag.EContextInvalid,
+						"unit-test teardown %s must be declared as void(void)", symbol).WithTarget(target.Name))
+				} else if !contains(tp.Context.Teardown, symbol) {
+					tp.Context.Teardown = append(tp.Context.Teardown, symbol)
+				}
+			}
+			if !valid {
+				tp.Classification = Blocked
+				tp.Reasons = append(tp.Reasons, "unit-test setup/teardown signature is invalid")
+			} else {
+				tp.UnitTestContext = info.Source + ":" + info.Function
+				tp.Context.Provenance = append(tp.Context.Provenance, "unit_test")
+				tp.Analysis.Provenance = append(tp.Analysis.Provenance, "unit_test_callsite")
+				tp.Reasons = append(tp.Reasons, "setup/teardown extracted from unit test callsite")
+			}
+		}
+	}
 	tp.Platform.HostTriple, tp.Platform.TargetTriple = variantTriples(analysis, fn.VariantID)
 	if fact != nil {
 		var merged bool
@@ -254,17 +297,26 @@ func functionTargetPlan(
 	}
 	tp.DirectCallees = append(tp.DirectCallees, fn.DirectCallees...)
 
-	if target.Input == "existing_harness" {
-		tp.Classification = Blocked
-		tp.Reasons = append(tp.Reasons, "existing_harness reuse is not implemented in P0")
-		tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EHarnessSource,
-			"existing harness reuse requires an explicit wrapper_source in P0",
-		).WithTarget(target.Name))
-		return tp
-	}
-
+	adapterStream := target.Input == "adapter_stream"
 	roles := inferRoles(fn, fact, target, maxInput)
+	if adapterStream {
+		if len(fn.Params) != 0 {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "adapter_stream requires a zero-argument entry function")
+			tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EContextInvalid,
+				"adapter_stream targets must not declare fuzz buffer/length parameters").WithTarget(target.Name))
+		}
+		roles = roleResult{
+			input:   InputModel{Kind: "adapter_stream", BufferArg: -1, LengthArg: -1, CapacityArg: -1},
+			reasons: []string{"fuzz bytes are consumed through an approved input-source adapter"},
+		}
+		tp.Constraints = []Constraint{{
+			Expr: fmt.Sprintf("size <= %d", maxInput), Basis: "configured_engine_limit",
+			Evidence: []string{"harness.max_input_bytes"},
+		}}
+	}
 	tp.CommandConstants = BuildCommandConstants(fn, fact, roles.input.LengthArg, roles.input.CapacityArg)
+	tp.CommandNames = uniqueSorted(append([]string(nil), fn.CaseNames...))
 	tp.InputModel = roles.input
 	if target.Input != "" {
 		tp.InputModel.Kind = target.Input
@@ -274,8 +326,16 @@ func functionTargetPlan(
 	tp.StateProbe = target.StateProbe
 	tp.FrameReset = target.FrameReset
 	tp.CommandSeeds = target.CommandSeeds
+	if target.Framing != nil {
+		tp.Framing = FramePlan{
+			LengthBytes: target.Framing.LengthBytes, Endian: target.Framing.Endian,
+			IncludesHeader: target.Framing.IncludesHeader,
+		}
+	}
 	tp.Roles = roles.roles
-	tp.Constraints = roles.constraints
+	if !adapterStream || len(roles.constraints) > 0 {
+		tp.Constraints = roles.constraints
+	}
 	tp.Reasons = append(tp.Reasons, roles.reasons...)
 	tp.Diagnostics = append(tp.Diagnostics, roles.diagnostics...)
 	if roles.blocked {
@@ -307,17 +367,23 @@ func functionTargetPlan(
 		tp.Reasons = append(tp.Reasons, "variadic functions are not supported in P0")
 	}
 	if fn.IsMethod {
-		if fn.IsStaticMethod && target.Factory != "" {
+		if fn.IsStaticMethod && (target.Factory != "" || target.Constructor != "") {
 			tp.Classification = Blocked
-			tp.Reasons = append(tp.Reasons, "static method does not require an object factory")
+			tp.Reasons = append(tp.Reasons, "static method does not require an object factory or constructor")
 			tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EContextInvalid,
-				"targets.factory must not be set for a static member function").WithTarget(target.Name))
-		} else if fn.IsStaticMethod && target.Factory == "" {
+				"targets.factory/constructor must not be set for a static member function").WithTarget(target.Name))
+		} else if fn.IsStaticMethod && target.Factory == "" && target.Constructor == "" {
 			tp.IsStaticMethod = true
 			tp.Reasons = append(tp.Reasons, "static C++ method has no object lifetime; called directly")
 			tp.Context.Provenance = append(tp.Context.Provenance, "static_method")
 		} else {
-			factory, factoryDiags := resolveFactory(analysis, fn, target)
+			var factory *FactoryPlan
+			var factoryDiags []diag.Diagnostic
+			if target.Constructor != "" {
+				factory, factoryDiags = resolveConstructor(analysis, fn, target)
+			} else {
+				factory, factoryDiags = resolveFactory(analysis, fn, target)
+			}
 			tp.Diagnostics = append(tp.Diagnostics, factoryDiags...)
 			if factory == nil {
 				tp.Classification = Blocked
@@ -328,11 +394,11 @@ func functionTargetPlan(
 				tp.Reasons = append(tp.Reasons, "C++ object constructed by "+factoryDescription(factory))
 			}
 		}
-	} else if target.Factory != "" {
+	} else if target.Factory != "" || target.Constructor != "" {
 		tp.Classification = Blocked
-		tp.Reasons = append(tp.Reasons, "targets.factory is only valid for a C++ member function")
+		tp.Reasons = append(tp.Reasons, "targets.factory/constructor is only valid for a C++ member function")
 		tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EContextInvalid,
-			"targets.factory requires a C++ member function target").WithTarget(target.Name))
+			"targets.factory/constructor requires a C++ member function target").WithTarget(target.Name))
 	}
 	if fn.InternalLinkage && !isHeader(fn.Source) {
 		tp.Classification = Blocked
@@ -365,6 +431,20 @@ func functionTargetPlan(
 	tp.Dependencies = deps.translationUnits
 	tp.Adapters = deps.adapters
 	tp.Diagnostics = append(tp.Diagnostics, deps.diagnostics...)
+	if adapterStream {
+		found := false
+		for _, adapter := range tp.Adapters {
+			if adapter.Model == "input_source" || adapter.EventModel == "uart_rx" || adapter.EventModel == "network_rx" {
+				found = true
+			}
+		}
+		if !found {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "adapter_stream requires an input_source/uart_rx/network_rx adapter")
+			tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EContextUnknown,
+				"adapter_stream target has no approved input-source adapter").WithTarget(target.Name))
+		}
+	}
 	tp.Reasons = append(tp.Reasons, deps.reasons...)
 	if deps.blocked {
 		tp.Classification = Blocked
@@ -892,6 +972,28 @@ func evaluateHardwareBoundaries(flags map[string]bool, adapters []AdapterBinding
 			"target dependency path crosses a direct MMIO/inline-assembly boundary",
 		))
 	}
+	if flags["UART_RX"] {
+		uartAdapter, ok := adapterByEventModel(adapters, "uart_rx")
+		if !ok && eventCount == 0 {
+			blocked = true
+			reasons = append(reasons, "UART path has no adapter with event_model=uart_rx")
+			diagnostics = append(diagnostics, diag.New(diag.EHALUnmodeled,
+				"UART receive path requires an approved uart_rx adapter or explicit event hook"))
+		} else {
+			reasons = append(reasons, "UART boundary modeled by "+uartAdapter.OriginalSymbol)
+		}
+	}
+	if flags["NET_RX"] {
+		networkAdapter, ok := adapterByEventModel(adapters, "network_rx")
+		if !ok && eventCount == 0 {
+			blocked = true
+			reasons = append(reasons, "network path has no adapter with event_model=network_rx")
+			diagnostics = append(diagnostics, diag.New(diag.EHALUnmodeled,
+				"network receive path requires an approved network_rx adapter or explicit event hook"))
+		} else {
+			reasons = append(reasons, "network boundary modeled by "+networkAdapter.OriginalSymbol)
+		}
+	}
 	if flags["DMA_ASYNC"] {
 		dmaAdapter, ok := adapterByEventModel(adapters, "dma_completion")
 		switch {
@@ -931,4 +1033,61 @@ func evaluateHardwareBoundaries(flags map[string]bool, adapters []AdapterBinding
 		}
 	}
 	return blocked, reasons, diagnostics
+}
+
+func existingHarnessTargetPlan(cfg *config.Config, target config.Target) TargetPlan {
+	maxInput := cfg.EffectiveMaxInputBytes(target)
+	tp := TargetPlan{
+		Name:           target.Name,
+		Symbol:         target.Symbol,
+		QualifiedName:  target.Symbol,
+		Source:         fsutil.Rel(cfg.Root, target.Source),
+		Header:         fsutil.Rel(cfg.Root, target.Header),
+		Language:       languageForHarness(target.ExistingHarnessSource),
+		Required:       target.Required,
+		Status:         "planned",
+		Classification: ReadyCandidate,
+		MaxInputBytes:  maxInput,
+		InputModel:     InputModel{Kind: "existing_harness", BufferArg: 0, LengthArg: 1, CapacityArg: -1},
+		Context: ContextPlan{
+			ResetPolicy: "isolated",
+			Provenance:  []string{"existing_harness"},
+		},
+		Analysis: AnalysisEvidence{
+			AST:        "existing_harness",
+			IR:         "not_applicable",
+			Provenance: []string{"explicit_config", "existing_harness"},
+		},
+		ExistingHarnessSource: fsutil.Rel(cfg.Root, target.ExistingHarnessSource),
+		Reasons:               []string{"user-provided libFuzzer harness is reused unchanged"},
+	}
+	tp.Seeds = expandSeeds(cfg.Root, target.Seeds)
+	if target.Source != "" {
+		tp.Dependencies = append(tp.Dependencies, fsutil.Rel(cfg.Root, target.Source))
+	}
+	tp.Constraints = []Constraint{{
+		Expr: fmt.Sprintf("size <= %d", maxInput), Basis: "configured_engine_limit",
+		Evidence: []string{"harness.max_input_bytes"},
+	}}
+	if len(target.Seeds) == 0 {
+		tp.Context.Unknowns = append(tp.Context.Unknowns, "no seed corpus configured")
+	}
+	return tp
+}
+
+func languageForHarness(path string) string {
+	lower := strings.ToLower(path)
+	if strings.HasSuffix(lower, ".cpp") || strings.HasSuffix(lower, ".cc") || strings.HasSuffix(lower, ".cxx") {
+		return "c++"
+	}
+	return "c"
+}
+
+func variantCompileFlags(analysis *analyzer.Analysis, variantID string) ([]string, []string) {
+	for _, variant := range analysis.Variants {
+		if variant.ID == variantID {
+			return variant.IncludeDirs, variant.Defines
+		}
+	}
+	return nil, nil
 }

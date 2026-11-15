@@ -1,0 +1,24 @@
+schema_version = 1
+
+[project]
+name = "c-unit-test-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "parser_process"
+symbol = "parser_process"
+source = "src/parser.c"
+header = "include/parser.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 32
+unit_test_source = "tests/test_parser.c"
+unit_test_function = "test_parser"
+invariant_check = "parser_invariant"
+seeds = ["seeds"]

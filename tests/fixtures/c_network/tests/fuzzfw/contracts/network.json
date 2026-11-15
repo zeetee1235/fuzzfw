@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "original_symbol": "NET_Recv",
+  "prototype": "int(uint8_t *, size_t)",
+  "model": "input_source",
+  "effects": ["write_buffer", "return_status"],
+  "max_write": "requested",
+  "valid_context": "firmware network receive path",
+  "nondeterminism": "none",
+  "event_model": "network_rx",
+  "completion": "synchronous",
+  "ownership": "caller",
+  "limitations": ["single synchronous receive from the harness stream", "no packet boundary or loss modeling"]
+}

@@ -4,6 +4,7 @@ package planner
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/fuzzfw/fuzzfw/internal/analyzer"
@@ -187,4 +188,62 @@ func factoryStyle(returnType string) (string, string) {
 
 func factoryDescription(plan *FactoryPlan) string {
 	return fmt.Sprintf("%s (%s)", plan.Symbol, plan.Style)
+}
+
+var constructorLiteral = regexp.MustCompile(`^-?[0-9]+(?:\.[0-9]+)?(?:[uUlLfF]+)?$`)
+
+// resolveConstructor validates an explicit C++ constructor path. Only literal
+// constructor arguments are accepted; object graphs remain an explicit
+// wrapper/factory concern.
+func resolveConstructor(analysis *analyzer.Analysis, fn *analyzer.Function, target config.Target) (*FactoryPlan, []diag.Diagnostic) {
+	if target.Constructor == "" {
+		return nil, []diag.Diagnostic{diag.New(diag.EContextUnknown,
+			"C++ method requires targets.factory, targets.constructor, or a user wrapper").WithTarget(target.Name)}
+	}
+	if !fn.IsMethod {
+		return nil, []diag.Diagnostic{diag.New(diag.EContextInvalid,
+			"targets.constructor is only valid for C++ member functions").WithTarget(target.Name)}
+	}
+	ctor, ok := findFactory(analysis, target.Constructor)
+	if !ok {
+		return nil, []diag.Diagnostic{diag.Newf(diag.EContextUnknown,
+			"constructor %s is not declared in analyzed translation units", target.Constructor).WithTarget(target.Name)}
+	}
+	if !ctor.IsMethod {
+		return nil, []diag.Diagnostic{diag.Newf(diag.EContextInvalid,
+			"%s is not a class constructor", ctor.QualifiedName).WithTarget(target.Name)}
+	}
+	parent := fn.ParentType
+	if parent == "" {
+		parent = classFromQualified(fn.QualifiedName)
+	}
+	ctorParent := ctor.ParentType
+	if ctorParent == "" {
+		ctorParent = classFromQualified(ctor.QualifiedName)
+	}
+	if parent == "" || ctorParent == "" || lastComponent(ctorParent) != lastComponent(parent) {
+		return nil, []diag.Diagnostic{diag.Newf(diag.EContextInvalid,
+			"constructor %s belongs to %s, target belongs to %s", ctor.QualifiedName, ctorParent, parent).WithTarget(target.Name)}
+	}
+	if ctor.Name != lastComponent(parent) || ctor.QualifiedName != parent+"::"+ctor.Name {
+		return nil, []diag.Diagnostic{diag.Newf(diag.EContextInvalid,
+			"%s is not the constructor for %s", ctor.QualifiedName, parent).WithTarget(target.Name)}
+	}
+	if len(target.ConstructorArgs) != len(ctor.Params) {
+		return nil, []diag.Diagnostic{diag.Newf(diag.EContextInvalid,
+			"constructor %s takes %d argument(s), got %d", ctor.QualifiedName, len(ctor.Params), len(target.ConstructorArgs)).WithTarget(target.Name)}
+	}
+	for index, argument := range target.ConstructorArgs {
+		if !constructorLiteral.MatchString(strings.TrimSpace(argument)) &&
+			argument != "true" && argument != "false" && argument != "nullptr" &&
+			!(strings.HasPrefix(argument, "\"") && strings.HasSuffix(argument, "\"")) &&
+			!(strings.HasPrefix(argument, "'") && strings.HasSuffix(argument, "'")) {
+			return nil, []diag.Diagnostic{diag.Newf(diag.EContextInvalid,
+				"constructor argument %d (%q) is not a literal; use a factory or wrapper for object graphs", index, argument).WithTarget(target.Name)}
+		}
+	}
+	return &FactoryPlan{
+		Symbol: ctor.QualifiedName, ClassType: parent, ReturnType: parent, Style: "constructor",
+		Arguments: append([]string(nil), target.ConstructorArgs...),
+	}, nil
 }

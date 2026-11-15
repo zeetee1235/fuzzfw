@@ -1,0 +1,26 @@
+schema_version = 1
+
+[project]
+name = "c-network-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "network_process"
+symbol = "network_process"
+source = "src/network.c"
+header = "include/network.h"
+required = true
+input = "adapter_stream"
+max_input_bytes = 32
+seeds = ["seeds"]
+
+[[adapters]]
+original_symbol = "NET_Recv"
+replacement_source = "tests/fuzzfw/adapters/network.c"
+contract = "tests/fuzzfw/contracts/network.json"

@@ -72,6 +72,8 @@ definitions, include paths, forced includes, and standards are preserved.
 | `preserve_nonnull_on_empty` | `true` | Mutable buffers allocate one byte when input size is zero. |
 | `persistent_reset_check` | `true` | Repeat the same input inside one process and require identical coverage before persistent execution is allowed. |
 | `copy_input` | `true` | Copy engine bytes into an exact-size sanitizer-visible allocation before the target call; required to catch reads past `size`. |
+| `corpus_dedup` | `true` | Remove corpus inputs whose coverage/state/transition signature duplicates an earlier input. Findings are still triaged before removal. |
+| `frame_mutator` | `true` | Emit a libFuzzer custom mutator that preserves `length_prefixed` frame envelopes while mutating payloads and adding/removing frames. |
 
 ## `[ci]`
 
@@ -80,7 +82,8 @@ definitions, include paths, forced includes, and standards are preserved.
 | `mode` | `pr` | `pr`, `nightly`, or `release` (reported policy hint). |
 | `engine` | `honggfuzz` | `honggfuzz`, `libfuzzer`, or `replay`. |
 | `time_seconds` | `600` | Default fuzz budget. |
-| `jobs` | `2` | Engine workers. |
+| `jobs` | `2` | Engine workers per target. |
+| `target_jobs` | `1` | Target build/check/fuzz concurrency. Combined with `jobs`, keep `target_jobs * jobs` within CPU capacity. |
 | `fail_on_new_reproduced` | `true` | A new R1 target finding exits 1. |
 | `incomplete_is_failure` | `true` | Missing required checks exit 2. |
 | `baseline` | unset | Finding fingerprint baseline path. |
@@ -98,21 +101,27 @@ definitions, include paths, forced includes, and standards are preserved.
 | `source` | auto | TU/source path. Used for matching and wrapper builds. |
 | `header` | auto | Header that declares the function. No automatic prototype synthesis. |
 | `required` | `false` | Required for `check`; at least one required target or `--target` is mandatory. |
-| `input` | auto | `bytes_length`, `length_prefixed`, `manual_wrapper`, or `existing_harness`. `length_prefixed` reads a 4-byte little-endian frame length before each call. |
+| `input` | auto | `bytes_length`, `length_prefixed`, `adapter_stream`, `manual_wrapper`, or `existing_harness`. `length_prefixed` reads a 4-byte little-endian frame length before each call. `adapter_stream` calls a zero-argument entry point that reads bytes through an approved input-source adapter. |
 | `max_input_bytes` | harness default | Per-target cap; must not exceed the global cap (0 inherits). |
 | `output_bytes` | unset | Allocated output capacity for explicit `OUTPUT_BUFFER`/`CAPACITY` roles. |
 | `max_frames` | `64` for `length_prefixed` | Maximum frames processed from one fuzz input. |
 | `state_probe` | unset | `int(void)` or `int(context *)` function called after each target/event sequence; its value is folded into the state hash. |
 | `frame_reset` | unset | `void(void)` or `void(context *)` function called after each frame in `length_prefixed` mode; requires `input = "length_prefixed"`. |
+| `[targets.framing]` | 4-byte little-endian payload length | Explicit frame envelope: `length_bytes` (1/2/4/8), `endian` (`little`/`big`), `includes_header`. Requires `input = "length_prefixed"`. |
 | `invariant_check` | unset | Post-call oracle: `int(int)` or `int(int, const uint8_t *, size_t)`. Non-zero aborts as a triaged `target_invariant` finding. Requires a non-void integer target return and cannot be used with `manual_wrapper`. |
 | `command_seeds` | `false` | Synthesize minimal corpus seeds from `command_constants` (command only, command + zero). For `length_prefixed`, each is wrapped in a valid frame. |
 | `setup` | unset | Explicit setup function called before the target. Must be declared by the included header. |
 | `teardown` | unset | Explicit teardown function called after the target. |
 | `factory` | unset | Explicit C++ factory symbol for a member function target. Value, reference, raw pointer, `std::unique_ptr`, and `std::shared_ptr` returns are recognized. |
+| `constructor` | unset | Explicit C++ constructor symbol for a member function target, e.g. `Parser`. Mutually exclusive with `factory`. |
+| `constructor_args` | `[]` | Literal constructor arguments. Object graphs still require a factory or wrapper. |
 | `factory_lifetime` | unset | Must be `external` for a reference-returning factory; no automatic destruction is emitted. |
 | `destroy` | unset | Required when `factory` returns a raw pointer; must take the object pointer. |
 | `wrapper_symbol` | unset | User wrapper entry symbol; must be set with `wrapper_source`. |
 | `wrapper_source` | unset | User wrapper source compiled into the host build. |
+| `existing_harness_source` | unset | Reuse an existing libFuzzer harness unchanged. Set `input = "existing_harness"` and use `symbol = "LLVMFuzzerTestOneInput"`. |
+| `unit_test_source` | unset | Existing unit-test source used to extract setup/teardown calls around the target callsite. |
+| `unit_test_function` | first `test*` function | Unit-test function to inspect. `unit_test_source` is required. |
 | `seeds` | `[]` | Seed files or directories. |
 | `args` | unset | Explicit role list, one per parameter: `FUZZ_BYTES`, `FUZZ_BYTES_MUTABLE`, `LOGICAL_LENGTH`, `CAPACITY`, `OUTPUT_BUFFER`, `CONTEXT`, `CONFIG`, `UNKNOWN`. `OUTPUT_BUFFER` requires `output_bytes`; `CONTEXT` requires `targets.context`; `CONFIG` still requires a wrapper. |
 | `build_variant` | unset | Select an exact compilation-database variant. |

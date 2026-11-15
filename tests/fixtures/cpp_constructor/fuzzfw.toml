@@ -1,0 +1,23 @@
+schema_version = 1
+
+[project]
+name = "cpp-constructor-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "parser_feed_constructor"
+symbol = "Parser::feed"
+source = "src/parser.cpp"
+header = "include/parser.hpp"
+constructor = "Parser"
+constructor_args = ["3"]
+required = true
+input = "bytes_length"
+max_input_bytes = 128
+seeds = ["seeds"]

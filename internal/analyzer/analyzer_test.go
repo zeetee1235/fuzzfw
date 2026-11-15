@@ -2,7 +2,10 @@
 // Copyright 2026 fuzzfw contributors
 package analyzer
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
 
 func TestSplitFunctionType(t *testing.T) {
 	ret, params := splitFunctionType("int (const unsigned char *, size_t)")
@@ -111,4 +114,15 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestConstantExprAndEnumName(t *testing.T) {
+	node := &astNode{Kind: "ConstantExpr", Value: json.RawMessage(`"16"`)}
+	if got := firstIntegerLiteral(node); got != "16" {
+		t.Fatalf("constant expr value = %q", got)
+	}
+	ref := &astNode{Kind: "DeclRefExpr", ReferencedDecl: &astDeclRef{Kind: "EnumConstantDecl", Name: "CMD_READ"}}
+	if got := firstConstantName(ref); got != "CMD_READ" {
+		t.Fatalf("enum name = %q", got)
+	}
 }

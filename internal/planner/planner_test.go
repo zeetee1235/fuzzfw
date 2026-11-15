@@ -326,3 +326,30 @@ func TestCommandConstantsExcludeLengthAndDecode(t *testing.T) {
 		t.Fatalf("decode = %q", got)
 	}
 }
+
+func TestConstructorValidation(t *testing.T) {
+	targetFn := &analyzer.Function{
+		Name: "feed", QualifiedName: "Parser::feed", ParentType: "Parser", IsMethod: true,
+		Signature: "int (const unsigned char *, size_t)", Params: []analyzer.Param{
+			{Name: "data", Type: "const unsigned char *", IsPointer: true},
+			{Name: "len", Type: "size_t", IsInteger: true},
+		},
+	}
+	ctor := analyzer.Function{
+		Name: "Parser", QualifiedName: "Parser::Parser", ParentType: "Parser", IsMethod: true,
+		ReturnType: "void", Signature: "void (int)", Params: []analyzer.Param{
+			{Name: "mode", Type: "int", IsInteger: true},
+		},
+	}
+	analysis := &analyzer.Analysis{Functions: []analyzer.Function{ctor}}
+	plan, diagnostics := resolveConstructor(analysis, targetFn, config.Target{Name: "feed", Constructor: "Parser", ConstructorArgs: []string{"3"}})
+	if len(diagnostics) != 0 || plan == nil || plan.Style != "constructor" || len(plan.Arguments) != 1 {
+		t.Fatalf("plan=%+v diagnostics=%v", plan, diagnostics)
+	}
+	if plan, diagnostics := resolveConstructor(analysis, targetFn, config.Target{Name: "feed", Constructor: "Parser"}); plan != nil || len(diagnostics) == 0 {
+		t.Fatalf("missing constructor argument should fail: %+v %v", plan, diagnostics)
+	}
+	if plan, diagnostics := resolveConstructor(analysis, targetFn, config.Target{Name: "feed", Constructor: "Parser", ConstructorArgs: []string{"make()"}}); plan != nil || len(diagnostics) == 0 {
+		t.Fatalf("non-literal constructor argument should fail: %+v %v", plan, diagnostics)
+	}
+}
