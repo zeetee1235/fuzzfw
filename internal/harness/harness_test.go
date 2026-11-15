@@ -79,3 +79,39 @@ func TestHarnessIDIsDeterministic(t *testing.T) {
 		t.Fatalf("IDs differ: %s %s", a.HarnessID, b.HarnessID)
 	}
 }
+
+func TestEmitFactoryValueAndPointer(t *testing.T) {
+	plan := testPlan(t)
+	plan.Target.Language = "c++"
+	plan.Target.SourceHeader = "include/parser.hpp"
+	plan.Target.CallSymbol = "Parser::feed"
+	plan.Target.MethodName = "feed"
+	plan.Target.Factory = &planner.FactoryPlan{
+		Symbol: "Parser::create_default", ClassType: "Parser", ReturnType: "Parser", Style: "value",
+	}
+	source, extension, err := Emit(plan, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if extension != ".cpp" {
+		t.Fatalf("extension = %s", extension)
+	}
+	for _, want := range []string{"auto fuzzfw_object = Parser::create_default();", "(void)fuzzfw_object.feed(data, size);"} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing %q in:\n%s", want, source)
+		}
+	}
+	plan.Target.Factory = &planner.FactoryPlan{
+		Symbol: "RawParser::create", ClassType: "RawParser", ReturnType: "RawParser *", Style: "pointer", Destroy: "RawParser::destroy",
+	}
+	plan.Target.CallSymbol = "RawParser::feed"
+	source, _, err = Emit(plan, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"auto *fuzzfw_object = RawParser::create();", "fuzzfw_object->feed(data, size);", "RawParser::destroy(fuzzfw_object);"} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing %q in:\n%s", want, source)
+		}
+	}
+}

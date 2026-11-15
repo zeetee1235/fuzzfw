@@ -48,8 +48,9 @@ Evidence is collected from:
 
 1. parameter type and `const`;
 2. AST pointer dereference/index use;
-3. LLVM IR `memory_read`, `memory_write`, `indexed`, `compare`, `branch`,
-   `passed_to_call`, `may_escape`;
+3. LLVM IR `memory_read`, `memory_write`, `indexed`, `compare`,
+   `compare_constant:<n>`, `branch`, `loop_bound`, `allocation_size`,
+   `passed_to_call`, `may_escape`, and `data_dependent`;
 4. caller/unit-test evidence (future P1);
 5. explicit `targets.args` user contract.
 
@@ -136,6 +137,42 @@ must declare prototype, effects, valid context, nondeterminism, and limitations.
 A prototype mismatch or unknown effect blocks the target. A `return 0` body is
 not accepted as an input source; status-only models are allowed only when the
 contract explicitly says so.
+
+## C++ object lifetime
+
+P0 does not create arbitrary C++ objects. A member-function target is supported
+only with an explicit, validated factory:
+
+```toml
+[[targets]]
+name = "parser_feed"
+symbol = "Parser::feed"
+header = "include/parser.hpp"
+factory = "Parser::create_default"
+```
+
+The generator emits one of:
+
+```cpp
+// factory returns Parser by value
+auto object = Parser::create_default();
+(void)object.feed(data, size);
+
+// factory returns std::unique_ptr<Parser>
+auto object = Parser::create_unique();
+(void)object->feed(data, size);
+
+// factory returns RawParser* and destroy is configured
+auto *object = RawParser::create();
+if (object == nullptr) return 0;
+(void)object->feed(data, size);
+RawParser::destroy(object);
+```
+
+Factory class, return type, staticness, and destroy pointer argument are checked
+against the AST. A raw-pointer factory without `destroy` is blocked. A
+non-static member factory, reference return, or mismatched class is blocked. If
+the factory cannot be proven, use the user wrapper path.
 
 ## Explicit wrapper escape hatch
 

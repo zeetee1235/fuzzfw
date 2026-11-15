@@ -8,5 +8,6 @@
 /* A deliberately small packet parser used by fuzzfw integration tests. */
 int parse_packet(const uint8_t *data, size_t len);
 int parse_header(const uint8_t *data, size_t len);
+int checksum_loop(const uint8_t *data, size_t len);
 
 #endif

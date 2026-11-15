@@ -19,7 +19,9 @@
 |---|---|
 | C11/C17 free/static functions with bytes+length | Implemented. |
 | C++17 free functions/namespaces | Implemented. |
-| C++ class methods, constructors, RAII, factories | Blocked/adaptable until P1 context planning. |
+| C++ class methods with explicit factory | Supported for value, raw pointer + destroy, `unique_ptr`, and `shared_ptr` returns. |
+| C++ constructors / arbitrary object graphs | Blocked; no guessed constructor arguments. |
+| C++ static member functions | Supported directly without a factory. |
 | `static` function in a non-header TU | Blocked; direct external linkage is impossible without source/build changes. |
 | `static inline` in a project header | Supported when a unique header is declared. |
 | Variadic functions | Blocked. |
@@ -46,7 +48,7 @@
 |---|---|
 | `replay` | Implemented and integration-tested; validates build/corpus without mutation. |
 | `libfuzzer` | Implemented and integration-tested with Clang. |
-| `honggfuzz` | Adapter implemented (`hfuzz-clang`, `-P`, LLVMFuzzerTestOneInput); **release matrix not yet validated**. |
+| `honggfuzz` | Validated with upstream `hfuzz-clang`/`libhfuzz` persistent mode; wider version matrix still pending. |
 | Persistent target reset | Not yet; isolated execution is the default. |
 
 ## ABI and findings

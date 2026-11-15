@@ -68,6 +68,7 @@ func Analyze(ctx context.Context, cfg *config.Config, db *compdb.Database, tools
 		totalFunctions += len(functions)
 	}
 
+	applyDeclarationModifiers(analysis)
 	mapHeaders(analysis)
 	resolveCalls(analysis)
 	analysis.Diagnostics = bag.Items()
@@ -258,6 +259,28 @@ func firstLines(text string, limit int) string {
 		lines = lines[:limit]
 	}
 	return strings.Join(lines, " | ")
+}
+
+// applyDeclarationModifiers propagates static storage from declarations to
+// out-of-line definitions, where Clang's JSON dump omits storageClass.
+func applyDeclarationModifiers(analysis *Analysis) {
+	declaredStatic := map[string]bool{}
+	for _, declaration := range analysis.ExternalDeclarations {
+		if declaration.IsStatic {
+			declaredStatic[declaration.Name+"\x00"+declaration.Signature] = true
+		}
+	}
+	for i := range analysis.Functions {
+		fn := &analysis.Functions[i]
+		if !declaredStatic[fn.Name+"\x00"+fn.Signature] {
+			continue
+		}
+		if fn.IsMethod {
+			fn.IsStaticMethod = true
+		} else {
+			fn.InternalLinkage = true
+		}
+	}
 }
 
 // mapHeaders joins definitions to a unique source header declaration.

@@ -106,6 +106,7 @@ type Function struct {
 	QualifiedName   string     `json:"qualified_name"`
 	MangledName     string     `json:"mangled_name,omitempty"`
 	USR             string     `json:"usr,omitempty"`
+	ParentType      string     `json:"parent_type,omitempty"`
 	Signature       string     `json:"signature"`
 	ReturnType      string     `json:"return_type"`
 	Source          string     `json:"source"`
@@ -136,10 +137,12 @@ type Declaration struct {
 	QualifiedName string `json:"qualified_name"`
 	MangledName   string `json:"mangled_name,omitempty"`
 	Signature     string `json:"signature"`
+	ReturnType    string `json:"return_type,omitempty"`
 	Source        string `json:"source"`
 	Line          int    `json:"line,omitempty"`
 	Language      string `json:"language"`
 	VariantID     string `json:"variant_id"`
+	IsStatic      bool   `json:"is_static,omitempty"`
 }
 
 // IRFunctionFact is the joinable LLVM IR summary for one function.
@@ -159,6 +162,7 @@ type IRFunctionFact struct {
 	LoadCount     int          `json:"load_count,omitempty"`
 	StoreCount    int          `json:"store_count,omitempty"`
 	IndirectCalls int          `json:"indirect_calls,omitempty"`
+	DataDependent bool         `json:"data_dependent,omitempty"`
 }
 
 // IRArgument is one argument's observed IR uses.

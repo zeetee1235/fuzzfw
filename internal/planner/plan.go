@@ -179,6 +179,7 @@ func functionTargetPlan(
 	if fact != nil {
 		tp.Analysis.IR = "observed"
 		tp.Analysis.Provenance = append(tp.Analysis.Provenance, "llvm_ir")
+		tp.Analysis.IRDataDependent = fact.DataDependent
 		tp.Analysis.Unknowns = append(tp.Analysis.Unknowns, fact.Unknowns...)
 		copy := *fn
 		copy.HardwareFlags = uniqueSorted(append(append([]string{}, copy.HardwareFlags...), fact.HardwareFlags...))
@@ -222,11 +223,32 @@ func functionTargetPlan(
 		tp.Reasons = append(tp.Reasons, "variadic functions are not supported in P0")
 	}
 	if fn.IsMethod {
+		if fn.IsStaticMethod && target.Factory != "" {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "static method does not require an object factory")
+			tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EContextInvalid,
+				"targets.factory must not be set for a static member function").WithTarget(target.Name))
+		} else if fn.IsStaticMethod && target.Factory == "" {
+			tp.IsStaticMethod = true
+			tp.Reasons = append(tp.Reasons, "static C++ method has no object lifetime; called directly")
+			tp.Context.Provenance = append(tp.Context.Provenance, "static_method")
+		} else {
+			factory, factoryDiags := resolveFactory(analysis, fn, target)
+			tp.Diagnostics = append(tp.Diagnostics, factoryDiags...)
+			if factory == nil {
+				tp.Classification = Blocked
+				tp.Reasons = append(tp.Reasons, "C++ method requires a validated factory/RAII path")
+			} else {
+				tp.Factory = factory
+				tp.Context.Provenance = append(tp.Context.Provenance, "explicit_factory")
+				tp.Reasons = append(tp.Reasons, "C++ object constructed by "+factoryDescription(factory))
+			}
+		}
+	} else if target.Factory != "" {
 		tp.Classification = Blocked
-		tp.Reasons = append(tp.Reasons, "C++ methods require an object lifetime plan; provide a wrapper")
-		tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EContextUnknown,
-			"C++ method target requires factory/RAII context; automatic object synthesis is disabled",
-		).WithTarget(target.Name))
+		tp.Reasons = append(tp.Reasons, "targets.factory is only valid for a C++ member function")
+		tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EContextInvalid,
+			"targets.factory requires a C++ member function target").WithTarget(target.Name))
 	}
 	if fn.InternalLinkage && !isHeader(fn.Source) {
 		tp.Classification = Blocked

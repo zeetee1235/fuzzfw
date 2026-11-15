@@ -40,7 +40,8 @@
           "branch_count": {"type": "integer", "minimum": 0},
           "load_count": {"type": "integer", "minimum": 0},
           "store_count": {"type": "integer", "minimum": 0},
-          "indirect_calls": {"type": "integer", "minimum": 0}
+          "indirect_calls": {"type": "integer", "minimum": 0},
+          "data_dependent": {"type": "boolean"}
         }
       }
     }

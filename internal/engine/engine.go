@@ -233,6 +233,7 @@ func (e *HonggfuzzEngine) Run(ctx context.Context, target string, build *hostbui
 		Duration:    time.Since(started),
 		LogPath:     logPath,
 		ArtifactDir: artifactDir,
+		Executions:  parseHonggfuzzExecutions(run.Stdout + run.Stderr),
 	}
 	result.RawFindings, _ = collectHonggfuzzArtifacts(artifactDir, target, logPath)
 	return result, nil
@@ -302,4 +303,14 @@ func collectHonggfuzzArtifacts(dir, target, logPath string) ([]RawFinding, error
 func emptyDir(path string) bool {
 	entries, err := os.ReadDir(path)
 	return err == nil && len(entries) == 0
+}
+
+var honggfuzzExecPattern = regexp.MustCompile(`Summary iterations:(\d+)`)
+
+func parseHonggfuzzExecutions(text string) int {
+	if match := honggfuzzExecPattern.FindStringSubmatch(text); match != nil {
+		value, _ := strconv.Atoi(match[1])
+		return value
+	}
+	return 0
 }

@@ -54,6 +54,7 @@
           "qualified_name": {"type": "string"},
           "mangled_name": {"type": "string"},
           "usr": {"type": "string"},
+          "parent_type": {"type": "string"},
           "signature": {"type": "string"},
           "return_type": {"type": "string"},
           "source": {"type": "string"},

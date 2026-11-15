@@ -210,6 +210,72 @@ func TestWrapperPasses(t *testing.T) {
 	}
 }
 
+func TestNativeIRLoopBoundEvidence(t *testing.T) {
+	project := fixture("c_clean")
+	ensureBuild(t, project)
+	_, stderr, code := runCLI(t, project, "scan", ".", "--quiet")
+	if code != 0 {
+		t.Fatalf("scan exit = %d\n%s", code, stderr)
+	}
+	analysisData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "analysis.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var analysis map[string]any
+	if err := json.Unmarshal(analysisData, &analysis); err != nil {
+		t.Fatal(err)
+	}
+	if analysis["analysis_mode"] != "NATIVE_AST" {
+		t.Skip("native analyzer not built; textual IR fallback does not claim loop-bound evidence")
+	}
+	found := false
+	for _, raw := range analysis["ir_facts"].([]any) {
+		fact := raw.(map[string]any)
+		if fact["link_symbol"] != "checksum_loop" {
+			continue
+		}
+		found = true
+		if fact["data_dependent"] != true {
+			t.Fatalf("data_dependent = %v", fact["data_dependent"])
+		}
+		args := fact["arguments"].([]any)
+		if len(args) < 2 {
+			t.Fatalf("arguments = %v", args)
+		}
+		arg1 := args[1].(map[string]any)
+		uses := arg1["observed_use"].([]any)
+		hasLoop := false
+		for _, use := range uses {
+			if use == "loop_bound" {
+				hasLoop = true
+			}
+		}
+		if !hasLoop {
+			t.Fatalf("length argument lacks loop_bound evidence: %v", uses)
+		}
+	}
+	if !found {
+		t.Fatal("checksum_loop IR fact missing")
+	}
+}
+
+func TestCppObjectContextPasses(t *testing.T) {
+	project := fixture("cpp_context")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("cpp context check exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	for _, raw := range summary["targets"].([]any) {
+		target := raw.(map[string]any)
+		if target["status"] != "selftest_passed" && target["status"] != "fuzzable" {
+			t.Fatalf("target %v status = %v", target["name"], target["status"])
+		}
+	}
+}
+
 func TestFallbackAnalysisPasses(t *testing.T) {
 	project := fixture("c_clean")
 	ensureBuild(t, project)

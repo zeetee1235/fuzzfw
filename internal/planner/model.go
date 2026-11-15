@@ -100,10 +100,20 @@ type PlatformPlan struct {
 
 // AnalysisEvidence is the provenance summary carried into the harness plan.
 type AnalysisEvidence struct {
-	AST        string   `json:"ast"`
-	IR         string   `json:"ir"`
-	Unknowns   []string `json:"unknowns,omitempty"`
-	Provenance []string `json:"provenance,omitempty"`
+	AST             string   `json:"ast"`
+	IR              string   `json:"ir"`
+	IRDataDependent bool     `json:"ir_data_dependent,omitempty"`
+	Unknowns        []string `json:"unknowns,omitempty"`
+	Provenance      []string `json:"provenance,omitempty"`
+}
+
+// FactoryPlan describes an explicit C++ object construction/destruction path.
+type FactoryPlan struct {
+	Symbol     string `json:"symbol"`
+	ClassType  string `json:"class_type"`
+	ReturnType string `json:"return_type"`
+	Style      string `json:"style"` // value, pointer, unique_ptr, shared_ptr
+	Destroy    string `json:"destroy,omitempty"`
 }
 
 // AdapterBinding is an approved platform boundary replacement.
@@ -153,6 +163,8 @@ type TargetPlan struct {
 	MaxInputBytes  int                `json:"max_input_bytes"`
 	Seeds          []string           `json:"seeds,omitempty"`
 	Wrapper        *WrapperPlan       `json:"wrapper,omitempty"`
+	Factory        *FactoryPlan       `json:"factory,omitempty"`
+	IsStaticMethod bool               `json:"is_static_method,omitempty"`
 	Function       *analyzer.Function `json:"-"`
 }
 

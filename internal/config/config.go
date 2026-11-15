@@ -111,6 +111,8 @@ type Target struct {
 	MaxInputBytes int      `toml:"max_input_bytes"`
 	Setup         string   `toml:"setup"`
 	Teardown      string   `toml:"teardown"`
+	Factory       string   `toml:"factory"`
+	Destroy       string   `toml:"destroy"`
 	WrapperSymbol string   `toml:"wrapper_symbol"`
 	WrapperSource string   `toml:"wrapper_source"`
 	Seeds         []string `toml:"seeds"`
@@ -383,6 +385,9 @@ func normalize(file File, path, base string) (*Config, error) {
 		}
 		if (target.WrapperSource == "") != (target.WrapperSymbol == "") {
 			return nil, usageError(fmt.Sprintf("target %s: wrapper_source and wrapper_symbol must be set together", target.Name))
+		}
+		if target.Destroy != "" && target.Factory == "" {
+			return nil, usageError(fmt.Sprintf("target %s: destroy requires factory", target.Name))
 		}
 		if target.WrapperSource != "" && target.Input == "" {
 			target.Input = "manual_wrapper"

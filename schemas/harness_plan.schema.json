@@ -21,7 +21,10 @@
         "call_symbol": {"type": "string"},
         "source_header": {"type": "string"},
         "build_variant": {"type": "string"},
-        "source": {"type": "string"}
+        "source": {"type": "string"},
+        "method_name": {"type": "string"},
+        "factory": {"type": "object"},
+        "is_static_method": {"type": "boolean"}
       }
     },
     "role_bindings": {"type": "array"},

@@ -149,15 +149,18 @@ func (idx *astIndex) collectNodes(
 				seenFunctions[key] = true
 				*functions = append(*functions, fn)
 			} else {
+				declarationReturn, _ := splitFunctionType(node.Type.QualType)
 				declaration := Declaration{
 					Name:          node.Name,
 					QualifiedName: qualified,
 					MangledName:   node.MangledName,
 					Signature:     node.Type.QualType,
+					ReturnType:    declarationReturn,
 					Source:        source,
 					Line:          node.Loc.line(),
 					Language:      variant.Language,
 					VariantID:     variant.ID,
+					IsStatic:      node.StorageClass == "static",
 				}
 				key := declaration.Name + "\x00" + declaration.Signature + "\x00" + declaration.Source
 				if !seenDeclarations[key] {
@@ -213,6 +216,11 @@ func (idx *astIndex) buildFunction(node *astNode, qualified, source string, vari
 			fn.IsStaticMethod = true
 		} else {
 			fn.InternalLinkage = true
+		}
+	}
+	if fn.IsMethod {
+		if idx := strings.LastIndex(qualified, "::"); idx > 0 {
+			fn.ParentType = qualified[:idx]
 		}
 	}
 	for _, child := range node.Inner {

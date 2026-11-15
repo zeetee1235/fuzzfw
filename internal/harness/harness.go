@@ -24,15 +24,18 @@ const SchemaVersion = 2
 
 // Target is the typed entry description.
 type Target struct {
-	Name         string `json:"name"`
-	FunctionID   string `json:"function_id,omitempty"`
-	Language     string `json:"language"`
-	EntryKind    string `json:"entry_kind"`
-	LinkSymbol   string `json:"link_symbol"`
-	CallSymbol   string `json:"call_symbol,omitempty"`
-	SourceHeader string `json:"source_header,omitempty"`
-	BuildVariant string `json:"build_variant,omitempty"`
-	Source       string `json:"source,omitempty"`
+	Name           string               `json:"name"`
+	FunctionID     string               `json:"function_id,omitempty"`
+	Language       string               `json:"language"`
+	EntryKind      string               `json:"entry_kind"`
+	LinkSymbol     string               `json:"link_symbol"`
+	CallSymbol     string               `json:"call_symbol,omitempty"`
+	SourceHeader   string               `json:"source_header,omitempty"`
+	BuildVariant   string               `json:"build_variant,omitempty"`
+	Source         string               `json:"source,omitempty"`
+	MethodName     string               `json:"method_name,omitempty"`
+	Factory        *planner.FactoryPlan `json:"factory,omitempty"`
+	IsStaticMethod bool                 `json:"is_static_method,omitempty"`
 }
 
 // Plan is the harness generator's input/output contract.
@@ -88,15 +91,18 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 		SchemaVersion: SchemaVersion,
 		Generator:     "fuzzfw-harness/" + version.Version,
 		Target: Target{
-			Name:         target.Name,
-			FunctionID:   target.FunctionID,
-			Language:     target.Language,
-			EntryKind:    "direct_buffer_api",
-			LinkSymbol:   target.MangledName,
-			CallSymbol:   target.QualifiedName,
-			SourceHeader: target.Header,
-			BuildVariant: target.VariantID,
-			Source:       target.Source,
+			Name:           target.Name,
+			FunctionID:     target.FunctionID,
+			Language:       target.Language,
+			EntryKind:      "direct_buffer_api",
+			LinkSymbol:     target.MangledName,
+			CallSymbol:     target.QualifiedName,
+			SourceHeader:   target.Header,
+			BuildVariant:   target.VariantID,
+			Source:         target.Source,
+			MethodName:     methodName(target.QualifiedName),
+			Factory:        target.Factory,
+			IsStaticMethod: target.IsStaticMethod,
 		},
 		RoleBindings: append([]planner.RoleBinding(nil), target.Roles...),
 		Constraints:  append([]planner.Constraint(nil), target.Constraints...),
@@ -270,6 +276,17 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 	for _, setup := range plan.Context.Setup {
 		fmt.Fprintf(&b, "    %s();\n", setup)
 	}
+	if plan.Target.Factory != nil && !plan.Target.IsStaticMethod {
+		switch plan.Target.Factory.Style {
+		case "value", "unique_ptr", "shared_ptr":
+			fmt.Fprintf(&b, "    auto fuzzfw_object = %s();\n", plan.Target.Factory.Symbol)
+		case "pointer":
+			fmt.Fprintf(&b, "    auto *fuzzfw_object = %s();\n", plan.Target.Factory.Symbol)
+			b.WriteString("    if (fuzzfw_object == nullptr) return 0;\n")
+		default:
+			return "", "", fmt.Errorf("unsupported factory style %q", plan.Target.Factory.Style)
+		}
+	}
 	args := make([]string, 0, len(roles))
 	for arg := 0; arg < len(plan.RoleBindings); arg++ {
 		role, ok := roles[arg]
@@ -291,7 +308,28 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 	if callSymbol == "" {
 		callSymbol = plan.Target.LinkSymbol
 	}
-	fmt.Fprintf(&b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
+	switch {
+	case plan.Target.IsStaticMethod:
+		fmt.Fprintf(&b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
+	case plan.Target.Factory != nil:
+		method := plan.Target.MethodName
+		if method == "" {
+			return "", "", fmt.Errorf("factory harness has no method name")
+		}
+		switch plan.Target.Factory.Style {
+		case "value":
+			fmt.Fprintf(&b, "    (void)fuzzfw_object.%s(%s);\n", method, strings.Join(args, ", "))
+		case "unique_ptr", "shared_ptr", "pointer":
+			fmt.Fprintf(&b, "    (void)fuzzfw_object->%s(%s);\n", method, strings.Join(args, ", "))
+		default:
+			return "", "", fmt.Errorf("unsupported factory style %q", plan.Target.Factory.Style)
+		}
+		if plan.Target.Factory.Style == "pointer" && plan.Target.Factory.Destroy != "" {
+			fmt.Fprintf(&b, "    %s(fuzzfw_object);\n", plan.Target.Factory.Destroy)
+		}
+	default:
+		fmt.Fprintf(&b, "    (void)%s(%s);\n", callSymbol, strings.Join(args, ", "))
+	}
 	for _, teardown := range plan.Context.Teardown {
 		fmt.Fprintf(&b, "    %s();\n", teardown)
 	}
@@ -396,4 +434,11 @@ func unique(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+func methodName(qualified string) string {
+	if idx := strings.LastIndex(qualified, "::"); idx >= 0 {
+		return qualified[idx+2:]
+	}
+	return qualified
 }

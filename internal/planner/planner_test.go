@@ -162,3 +162,38 @@ func TestTrivialInputAdapterRejected(t *testing.T) {
 		t.Fatalf("expected trivial adapter rejection, got %+v", diagnostic)
 	}
 }
+
+func TestRawFactoryWithoutDestroyBlocked(t *testing.T) {
+	fn := testFunction(
+		analyzer.Param{Index: 0, Name: "data", Type: "const uint8_t *", CanonicalType: "const unsigned char *", IsPointer: true, IsConst: true},
+		analyzer.Param{Index: 1, Name: "len", Type: "size_t", CanonicalType: "unsigned long", IsInteger: true, Bits: 64},
+	)
+	fn.IsMethod = true
+	fn.QualifiedName = "RawParser::feed"
+	fn.ParentType = "RawParser"
+	factory := analyzer.Function{
+		Name: "create", QualifiedName: "RawParser::create", ReturnType: "RawParser *",
+		Signature: "RawParser *()", Definition: true, IsMethod: true, IsStaticMethod: true, ParentType: "RawParser",
+	}
+	analysis := &analyzer.Analysis{Functions: []analyzer.Function{factory}}
+	plan, diagnostics := resolveFactory(analysis, fn, config.Target{Name: "raw", Factory: "RawParser::create"})
+	if plan != nil || len(diagnostics) == 0 || diagnostics[0].Code != "E_HARNESS_CONTEXT_UNKNOWN" {
+		t.Fatalf("plan=%+v diagnostics=%+v", plan, diagnostics)
+	}
+}
+
+func TestFactoryClassMismatchBlocked(t *testing.T) {
+	fn := testFunction()
+	fn.IsMethod = true
+	fn.QualifiedName = "Parser::feed"
+	fn.ParentType = "Parser"
+	factory := analyzer.Function{
+		Name: "create", QualifiedName: "Other::create", ReturnType: "Other",
+		Signature: "Other ()", Definition: true, IsMethod: true, IsStaticMethod: true, ParentType: "Other",
+	}
+	analysis := &analyzer.Analysis{Functions: []analyzer.Function{factory}}
+	plan, diagnostics := resolveFactory(analysis, fn, config.Target{Name: "p", Factory: "Other::create"})
+	if plan != nil || len(diagnostics) == 0 || diagnostics[0].Code != "E_CONTEXT_INVALID" {
+		t.Fatalf("plan=%+v diagnostics=%+v", plan, diagnostics)
+	}
+}

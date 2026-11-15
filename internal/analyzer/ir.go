@@ -30,6 +30,7 @@ type irInstruction struct {
 	kind   string
 	rhs    string
 	ops    []string
+	line   int
 }
 
 type irFunction struct {
@@ -37,6 +38,7 @@ type irFunction struct {
 	argValues     []string
 	argTypes      []string
 	instructions  []irInstruction
+	labels        map[string]int
 	indirectCalls int
 }
 
@@ -215,13 +217,21 @@ func parseIR(text string) *irModule {
 		if fn == nil {
 			continue
 		}
+		fn.labels = map[string]int{}
 		j := i + 1
 		for ; j < len(lines); j++ {
 			bodyLine := lines[j]
-			if strings.TrimSpace(bodyLine) == "}" {
+			trimmed := strings.TrimSpace(bodyLine)
+			if trimmed == "}" {
 				break
 			}
+			if strings.HasSuffix(trimmed, ":") && !strings.HasPrefix(trimmed, ";") {
+				label := strings.TrimSuffix(trimmed, ":")
+				fn.labels[label] = j + 1
+				continue
+			}
 			if inst, ok := parseInstruction(bodyLine); ok {
+				inst.line = j + 1
 				fn.instructions = append(fn.instructions, inst)
 			}
 		}
@@ -393,6 +403,13 @@ func summarizeIR(fn *irFunction, module *irModule, variant Variant, hostTriple s
 				mask := operandMask(inst.ops, taint)
 				if mask != 0 {
 					markUses(uses, mask, "compare")
+					if constant := compareConstant(inst.rhs); constant != "" {
+						for i := range uses {
+							if mask&(1<<uint(i)) != 0 {
+								uses[i]["compare_constant:"+constant] = true
+							}
+						}
+					}
 				}
 				if inst.result != "" && taint[inst.result] != mask {
 					taint[inst.result] = mask
@@ -402,6 +419,9 @@ func summarizeIR(fn *irFunction, module *irModule, variant Variant, hostTriple s
 				mask := operandMask(inst.ops, taint)
 				if mask != 0 {
 					markUses(uses, mask, "branch")
+				}
+				if mask != 0 && hasBackwardTarget(inst, fn.labels) {
+					markUses(uses, mask, "loop_bound")
 				}
 			case "phi", "select", "zext", "sext", "trunc", "bitcast", "ptrtoint", "addrspacecast", "freeze":
 				mask := operandMask(inst.ops, taint)
@@ -425,7 +445,12 @@ func summarizeIR(fn *irFunction, module *irModule, variant Variant, hostTriple s
 				} else if !strings.HasPrefix(symbol, "llvm.") {
 					if mask != 0 {
 						markUses(uses, mask, "passed_to_call")
-						argFactsMayEscape(uses, mask, argFacts)
+						if !isMemoryCallee(symbol) {
+							argFactsMayEscape(uses, mask, argFacts)
+						}
+						if isAllocationCallee(symbol) {
+							markUses(uses, mask, "allocation_size")
+						}
 					}
 					if !module.defined[symbol] && !allowedExternalCalls[symbol] {
 						unknowns = append(unknowns, "external_call:"+symbol)
@@ -468,6 +493,11 @@ func summarizeIR(fn *irFunction, module *irModule, variant Variant, hostTriple s
 		}
 	}
 	fact.IndirectCalls = fn.indirectCalls
+	for _, use := range uses {
+		if use["branch"] || use["compare"] || use["indexed"] || use["memory_read"] || use["loop_bound"] {
+			fact.DataDependent = true
+		}
+	}
 	fact.GlobalEffects = sortedKeys(globalEffects)
 	fact.HardwareFlags = sortedKeys(flags)
 	fact.Unknowns = uniqueStrings(unknowns)
@@ -593,4 +623,51 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func compareConstant(rhs string) string {
+	fields := strings.Fields(rhs)
+	for i := len(fields) - 1; i >= 0; i-- {
+		value := strings.Trim(fields[i], ",")
+		if value == "" {
+			continue
+		}
+		if value[0] == '-' || (value[0] >= '0' && value[0] <= '9') {
+			return value
+		}
+	}
+	return ""
+}
+
+func hasBackwardTarget(inst irInstruction, labels map[string]int) bool {
+	for _, field := range strings.Fields(inst.rhs) {
+		field = strings.Trim(field, ",")
+		if !strings.HasPrefix(field, "%") {
+			continue
+		}
+		if target, ok := labels[field[1:]]; ok && target <= inst.line {
+			return true
+		}
+	}
+	return false
+}
+
+func isMemoryCallee(symbol string) bool {
+	switch symbol {
+	case "memcpy", "memmove", "memset", "memcmp", "strlen", "strnlen",
+		"strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strncat",
+		"__builtin_memcpy", "__builtin_memset", "__builtin_strlen":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllocationCallee(symbol string) bool {
+	switch symbol {
+	case "malloc", "calloc", "realloc", "aligned_alloc", "memalign":
+		return true
+	default:
+		return false
+	}
 }

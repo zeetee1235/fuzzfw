@@ -100,11 +100,32 @@ definitions, include paths, forced includes, and standards are preserved.
 | `max_input_bytes` | harness default | Per-target cap; must not exceed the global cap (0 inherits). |
 | `setup` | unset | Explicit setup function called before the target. Must be declared by the included header. |
 | `teardown` | unset | Explicit teardown function called after the target. |
+| `factory` | unset | Explicit C++ factory symbol for a member function target. Value, raw pointer, `std::unique_ptr`, and `std::shared_ptr` returns are recognized. |
+| `destroy` | unset | Required when `factory` returns a raw pointer; must take the object pointer. |
 | `wrapper_symbol` | unset | User wrapper entry symbol; must be set with `wrapper_source`. |
 | `wrapper_source` | unset | User wrapper source compiled into the host build. |
 | `seeds` | `[]` | Seed files or directories. |
 | `args` | unset | Explicit role list, one per parameter: `FUZZ_BYTES`, `FUZZ_BYTES_MUTABLE`, `LOGICAL_LENGTH`, `CAPACITY`, `OUTPUT_BUFFER`, `CONTEXT`, `CONFIG`, `UNKNOWN`. `CONTEXT`/`OUTPUT_BUFFER`/`CONFIG` still require a wrapper. |
 | `build_variant` | unset | Select an exact compilation-database variant. |
+
+For a C++ member function, use an explicit factory instead of raw memory:
+
+```toml
+[[targets]]
+name = "parser_feed"
+symbol = "Parser::feed"
+header = "include/parser.hpp"
+factory = "Parser::create_default"
+required = true
+
+# Raw pointer factory:
+# factory = "RawParser::create"
+# destroy = "RawParser::destroy"
+```
+
+The factory must be declared in the included header and return the target
+class by value, pointer + `destroy`, `std::unique_ptr`, or `std::shared_ptr`.
+No constructor is guessed and no zeroed object is treated as one.
 
 The wrapper ABI is:
 

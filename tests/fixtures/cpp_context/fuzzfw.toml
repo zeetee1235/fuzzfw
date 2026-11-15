@@ -1,0 +1,55 @@
+schema_version = 1
+
+[project]
+name = "cpp-context-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "parser_feed"
+symbol = "Parser::feed"
+source = "src/parser.cpp"
+header = "include/parser.hpp"
+factory = "Parser::create_default"
+required = true
+input = "bytes_length"
+max_input_bytes = 128
+seeds = ["seeds"]
+
+[[targets]]
+name = "parser_feed_unique"
+symbol = "Parser::feed"
+source = "src/parser.cpp"
+header = "include/parser.hpp"
+factory = "Parser::create_unique"
+required = true
+input = "bytes_length"
+max_input_bytes = 128
+seeds = ["seeds"]
+
+[[targets]]
+name = "parser_hash_static"
+symbol = "Parser::hash_static"
+source = "src/parser.cpp"
+header = "include/parser.hpp"
+required = true
+input = "bytes_length"
+max_input_bytes = 128
+seeds = ["seeds"]
+
+[[targets]]
+name = "rawparser_feed"
+symbol = "RawParser::feed"
+source = "src/parser.cpp"
+header = "include/parser.hpp"
+factory = "RawParser::create"
+destroy = "RawParser::destroy"
+required = true
+input = "bytes_length"
+max_input_bytes = 128
+seeds = ["seeds"]

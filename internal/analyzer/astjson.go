@@ -31,7 +31,6 @@ type astNode struct {
 	StorageClass        string      `json:"storageClass"`
 	IsImplicit          bool        `json:"isImplicit"`
 	IsUsed              bool        `json:"isUsed"`
-	Value               string      `json:"value"`
 	ValueCategory       string      `json:"valueCategory"`
 	ParentDeclContextID string      `json:"parentDeclContextId"`
 	PreviousDecl        string      `json:"previousDecl"`

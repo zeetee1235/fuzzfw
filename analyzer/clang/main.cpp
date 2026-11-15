@@ -80,6 +80,7 @@ struct FunctionFact {
   std::string qualified;
   std::string mangled;
   std::string usr;
+  std::string parent_type;
   std::string signature;
   std::string return_type;
   std::string source;
@@ -101,10 +102,12 @@ struct FunctionFact {
 };
 
 struct DeclarationFact {
+  bool is_static = false;
   std::string name;
   std::string qualified;
   std::string mangled;
   std::string signature;
+  std::string return_type;
   std::string source;
   int line = 0;
   std::string language;
@@ -430,6 +433,10 @@ public:
     if (auto *method = dyn_cast<CXXMethodDecl>(decl)) {
       fact.is_method = true;
       fact.is_static_method = method->isStatic();
+      if (const CXXRecordDecl *parent = method->getParent()) {
+        if (!parent->getQualifiedNameAsString().empty())
+          fact.parent_type = parent->getQualifiedNameAsString();
+      }
     }
     if (decl->getStorageClass() == SC_Static && !fact.is_method)
       fact.internal_linkage = true;
@@ -476,9 +483,11 @@ public:
       declaration.qualified = fact.qualified;
       declaration.mangled = fact.mangled;
       declaration.signature = fact.signature;
+      declaration.return_type = fact.return_type;
       declaration.source = fact.source;
       declaration.line = fact.line;
       declaration.language = language_;
+      declaration.is_static = decl->getStorageClass() == SC_Static;
       declarations_.push_back(std::move(declaration));
     }
     return true;
@@ -595,6 +604,8 @@ llvm::json::Object functionJSON(const FunctionFact &fact) {
     object["usr"] = fact.usr;
   object["signature"] = fact.signature;
   object["return_type"] = fact.return_type;
+  if (!fact.parent_type.empty())
+    object["parent_type"] = fact.parent_type;
   object["source"] = fact.source;
   object["line"] = fact.line;
   object["column"] = fact.column;
@@ -670,10 +681,14 @@ llvm::json::Object declarationJSON(const DeclarationFact &fact) {
   if (!fact.mangled.empty())
     object["mangled_name"] = fact.mangled;
   object["signature"] = fact.signature;
+  if (!fact.return_type.empty())
+    object["return_type"] = fact.return_type;
   object["source"] = fact.source;
   if (fact.line > 0)
     object["line"] = fact.line;
   object["language"] = fact.language;
+  if (fact.is_static)
+    object["is_static"] = true;
   return object;
 }
 

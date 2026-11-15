@@ -16,6 +16,9 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/IR/ConstantRange.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
@@ -42,6 +45,22 @@ struct ArgFact {
   std::set<std::string> uses;
   bool may_escape = false;
 };
+
+bool isMemoryCallee(const Function *function) {
+  if (function == nullptr)
+    return false;
+  StringRef name = function->getName();
+  return name == "memcpy" || name == "memmove" || name == "memset" ||
+         name == "memcmp" || name == "strlen" || name == "strnlen" ||
+         name == "strcmp" || name == "strncmp" || name == "strcpy" ||
+         name == "strncpy" || name == "strcat" || name == "strncat" ||
+         name.starts_with("__builtin_mem") || name.starts_with("__builtin_str");
+}
+
+bool isAllocationCallee(StringRef name) {
+  return name == "malloc" || name == "calloc" || name == "realloc" ||
+         name == "aligned_alloc" || name == "memalign";
+}
 
 void markUses(std::vector<ArgFact> &uses, uint64_t mask, const std::string &use) {
   for (std::size_t i = 0; i < uses.size() && i < 63; ++i) {
@@ -80,6 +99,7 @@ struct FunctionFacts {
   std::set<std::string> globals;
   std::set<std::string> flags;
   std::set<std::string> unknowns;
+  bool dataDependent = false;
   unsigned branchCount = 0;
   unsigned loadCount = 0;
   unsigned storeCount = 0;
@@ -154,7 +174,22 @@ FunctionFacts analyzeFunction(const Function &function, const Module &module,
           taint[gep] = mask;
           continue;
         }
-        if (isa<ICmpInst>(instruction) || isa<FCmpInst>(instruction)) {
+        if (const auto *cmp = dyn_cast<ICmpInst>(&instruction)) {
+          uint64_t mask = operandMask(instruction, taint);
+          if (mask)
+            markUses(facts.uses, mask, "compare");
+          for (const Value *operand : cmp->operands()) {
+            if (const auto *constant = dyn_cast<ConstantInt>(operand)) {
+              for (std::size_t i = 0; i < facts.uses.size() && i < 63; ++i) {
+                if (mask & (uint64_t{1} << i))
+                  facts.uses[i].uses.insert("compare_constant:" + std::to_string(constant->getSExtValue()));
+              }
+            }
+          }
+          taint[&instruction] = mask;
+          continue;
+        }
+        if (isa<FCmpInst>(instruction)) {
           uint64_t mask = operandMask(instruction, taint);
           if (mask)
             markUses(facts.uses, mask, "compare");
@@ -221,11 +256,31 @@ FunctionFacts analyzeFunction(const Function &function, const Module &module,
       }
     }
   }
+  DominatorTree dominatorTree(const_cast<Function &>(function));
+  LoopInfo loopInfo(dominatorTree);
+  for (Loop *loop : loopInfo) {
+    SmallVector<BasicBlock *, 8> blocks;
+    blocks.push_back(loop->getHeader());
+    if (BasicBlock *latch = loop->getLoopLatch())
+      blocks.push_back(latch);
+    for (BasicBlock *block : blocks) {
+      const Instruction *terminator = block->getTerminator();
+      if (terminator == nullptr)
+        continue;
+      uint64_t mask = operandMask(*terminator, taint);
+      if (mask)
+        markUses(facts.uses, mask, "loop_bound");
+    }
+  }
   for (const ArgFact &arg : facts.uses) {
     if (arg.uses.count("memory_read"))
       facts.loadCount++;
     if (arg.uses.count("memory_write"))
       facts.storeCount++;
+    if (arg.uses.count("branch") || arg.uses.count("compare") ||
+        arg.uses.count("indexed") || arg.uses.count("loop_bound") ||
+        arg.uses.count("memory_read"))
+      facts.dataDependent = true;
   }
   return facts;
 }
@@ -267,6 +322,7 @@ llvm::json::Object factsJSON(const FunctionFacts &facts) {
   object["load_count"] = facts.loadCount;
   object["store_count"] = facts.storeCount;
   object["indirect_calls"] = facts.indirectCalls;
+  object["data_dependent"] = facts.dataDependent;
   return object;
 }
 

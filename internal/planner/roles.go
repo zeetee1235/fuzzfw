@@ -302,6 +302,15 @@ func choosePair(buffers, lengths []argCandidate, fact *analyzer.IRFunctionFact) 
 			if hasUse(lengthUses, "indexed") {
 				score += 2
 			}
+			if hasUse(lengthUses, "loop_bound") {
+				score += 3
+			}
+			if hasUse(lengthUses, "compare_constant") {
+				score++
+			}
+			if hasUse(lengthUses, "allocation_size") {
+				score++
+			}
 			if hasUse(lengthUses, "memory_write") {
 				score -= 6
 			}

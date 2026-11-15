@@ -73,6 +73,9 @@ declare i32 @external_helper(ptr)
 	if !containsUse(arg1, "compare") || !containsUse(arg1, "branch") {
 		t.Fatalf("arg1 uses = %#v", arg1)
 	}
+	if !containsUse(arg1, "compare_constant:4") {
+		t.Fatalf("arg1 lacks compare-constant evidence: %#v", arg1)
+	}
 	if !containsString(fact.HardwareFlags, "MMIO_DIRECT") {
 		t.Fatalf("hardware flags = %#v", fact.HardwareFlags)
 	}

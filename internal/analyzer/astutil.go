@@ -22,10 +22,17 @@ func splitFunctionType(qualType string) (string, []string) {
 	text := strings.TrimSpace(qualType)
 	open := strings.Index(text, " (")
 	if open < 0 {
+		open = strings.Index(text, "(")
+	}
+	if open < 0 {
 		return text, nil
 	}
 	returnType := strings.TrimSpace(text[:open])
-	rest := text[open+1:]
+	parenStart := open
+	if text[parenStart] == ' ' {
+		parenStart++
+	}
+	rest := text[parenStart:]
 	if !strings.HasPrefix(rest, "(") {
 		return returnType, nil
 	}
@@ -206,6 +213,12 @@ func LengthLimitMacro(param Param) (string, bool) {
 		return "INT64_MAX", true
 	}
 	return "", false
+}
+
+// ParseReturnType extracts the return type from a Clang function type string.
+func ParseReturnType(signature string) string {
+	returnType, _ := splitFunctionType(signature)
+	return returnType
 }
 
 func isHeaderFile(path string) bool {

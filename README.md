@@ -9,7 +9,7 @@ really reached and consumes input, and turns reproduced crashes into replayable
 artifacts.
 
 > Status: **pre-alpha (M0/M1 foundation)**. The core flow works end-to-end on
-> Linux x86-64 with Clang. honggfuzz is implemented but not yet release-tested.
+> Linux x86-64 with Clang. libFuzzer and honggfuzz have been exercised end-to-end.
 
 ## What it does
 
@@ -151,18 +151,20 @@ See [configuration](docs/reference/configuration.md) and
 - Original TU host build with ASan/UBSan, coverage, entry reachability,
   input-use evidence, stability, corpus replay, and finding reproduction.
 - Adapter contracts and user wrapper escape hatch.
-- C++ free functions/namespaces.
-- libFuzzer adapter tested; honggfuzz adapter implemented.
+- C++ free functions/namespaces and member functions through explicit
+  factory/RAII paths (value, raw pointer + destroy, `unique_ptr`, `shared_ptr`).
+- libFuzzer and honggfuzz adapters end-to-end tested.
+- IR loop-bound/data-dependence evidence and compare-constant facts.
 - Finding minimization and baseline bootstrap.
 
 ## Not yet
 
-- C++ class methods, factories, and RAII lifetime plans.
+- Arbitrary C++ constructors, object graphs, and reference-returning factories.
 - DMA/ISR/RTOS event models and persistent mode.
 - New PM AA/MemorySSA-assisted IR analysis.
 - Existing unit-test context extraction.
 - Multi-target parallel scheduling.
-- honggfuzz release-matrix validation.
+- honggfuzz validation across a wider release matrix.
 
 ## Repository layout
 
@@ -196,6 +198,9 @@ tests/fixtures/          C/C++/HAL/wrapper/fallback fixtures
 go test ./...
 go test -tags=integration ./tests/integration/...
 make lint
+
+# Optional: requires honggfuzz/hfuzz-clang/hfuzz-clang++ in PATH
+go test -tags='integration honggfuzz' ./tests/integration/...
 ```
 
 ## License
