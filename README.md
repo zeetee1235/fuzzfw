@@ -153,7 +153,8 @@ See [configuration](docs/reference/configuration.md) and
 - Adapter contracts and user wrapper escape hatch.
 - C context objects with explicit init/reset/destroy lifecycle.
 - Explicit output buffers with configured capacity and overrun detection.
-- Length-prefixed multi-frame sequences with bounded per-frame target calls.
+- Length-prefixed multi-frame sequences with bounded per-frame target calls,
+  state probing, per-frame reset hooks, and recorded state hashes.
 - Deterministic command/magic-constant dictionaries passed to libFuzzer and
   honggfuzz.
 - Conservative local-call interprocedural IR argument-use propagation.

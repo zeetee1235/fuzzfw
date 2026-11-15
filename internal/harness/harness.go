@@ -38,6 +38,8 @@ type Target struct {
 	ContextObject  *planner.ContextObjectPlan `json:"context_object,omitempty"`
 	IsStaticMethod bool                       `json:"is_static_method,omitempty"`
 	Events         []planner.EventHook        `json:"events,omitempty"`
+	StateProbe     string                     `json:"state_probe,omitempty"`
+	FrameReset     string                     `json:"frame_reset,omitempty"`
 }
 
 // Plan is the harness generator's input/output contract.
@@ -115,6 +117,8 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 			ContextObject:  target.ContextObject,
 			IsStaticMethod: target.IsStaticMethod,
 			Events:         append([]planner.EventHook(nil), target.Events...),
+			StateProbe:     target.StateProbe,
+			FrameReset:     target.FrameReset,
 		},
 		RoleBindings: append([]planner.RoleBinding(nil), target.Roles...),
 		Constraints:  append([]planner.Constraint(nil), target.Constraints...),
@@ -290,6 +294,7 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 		contextCast = contextPointerCast(contextRole.Type, "fuzzfw_context")
 	}
 	b.WriteString("    fuzzfw_input_bind(data, size);\n")
+	b.WriteString("    fuzzfw_run_begin();\n")
 	needsInputCopy := plan.CopyInput && bufferRole == planner.RoleFuzzBytes
 	needsCopy := bufferRole == planner.RoleFuzzBytesMutable
 	if needsInputCopy {
@@ -382,6 +387,7 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 				fmt.Fprintf(&b, "    %s();\n", event.Symbol)
 			}
 		}
+		emitStateProbe(&b, plan, "0", contextCast)
 	}
 	for _, teardown := range plan.Context.Teardown {
 		fmt.Fprintf(&b, "    %s();\n", teardown)
@@ -528,6 +534,14 @@ func emitSequence(b *strings.Builder, plan *Plan, roles map[int]planner.RoleBind
 			fmt.Fprintf(b, "        %s();\n", event.Symbol)
 		}
 	}
+	emitStateProbe(b, plan, "(uint32_t)fuzzfw_frames", contextCast)
+	if plan.Target.FrameReset != "" {
+		if plan.Target.ContextObject != nil {
+			fmt.Fprintf(b, "        %s(%s);\n", plan.Target.FrameReset, contextCast)
+		} else {
+			fmt.Fprintf(b, "        %s();\n", plan.Target.FrameReset)
+		}
+	}
 	b.WriteString("        free(frame_copy);\n")
 	b.WriteString("        fuzzfw_offset += fuzzfw_frame_len;\n")
 	b.WriteString("        fuzzfw_frames++;\n")
@@ -670,4 +684,18 @@ func outputPointerCast(typeName, value string) string {
 		return value
 	}
 	return "(" + trimmed + ")" + value
+}
+
+func emitStateProbe(b *strings.Builder, plan *Plan, indexExpr, contextCast string) {
+	if plan.Target.ContextObject != nil && plan.Target.StateProbe != "" {
+		fmt.Fprintf(b, "    int fuzzfw_state = %s(%s);\n", plan.Target.StateProbe, contextCast)
+		fmt.Fprintf(b, "    fuzzfw_run_frame(%s, fuzzfw_state);\n", indexExpr)
+		return
+	}
+	if plan.Target.StateProbe != "" {
+		fmt.Fprintf(b, "    int fuzzfw_state = %s();\n", plan.Target.StateProbe)
+		fmt.Fprintf(b, "    fuzzfw_run_frame(%s, fuzzfw_state);\n", indexExpr)
+		return
+	}
+	fmt.Fprintf(b, "    fuzzfw_run_frame(%s, 0);\n", indexExpr)
 }

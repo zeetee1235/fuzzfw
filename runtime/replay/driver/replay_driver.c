@@ -19,6 +19,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "fuzzfw_events.h"
+
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
 
 #define FUZZFW_PC_CAP 16384u
@@ -156,7 +158,9 @@ static int write_report(const char *path, const char *symbol, int hit, size_t in
     json_string(out, symbol == NULL ? "" : symbol);
     if (hit < 0) fprintf(out, ",\"entry_hit\":null");
     else fprintf(out, ",\"entry_hit\":%s", hit ? "true" : "false");
-    fprintf(out, ",\"iterations\":[");
+    fprintf(out, ",\"frames\":%llu,\"state_hash\":\"%016" PRIx64 "\",",
+            (unsigned long long)fuzzfw_run_frames(), fuzzfw_run_state_hash());
+    fprintf(out, "\"iterations\":[");
     for (int i = 0; i < iterations; i++) {
         if (i > 0) fputc(',', out);
         fprintf(out, "{\"iteration\":%d,\"coverage_hash\":\"%016" PRIx64 "\",\"guards_hit\":%u,\"entry_hit\":%s}",

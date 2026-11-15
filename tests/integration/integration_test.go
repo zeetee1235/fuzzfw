@@ -352,6 +352,34 @@ func TestLengthPrefixedSequencePasses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("sequence check exit = %d\n%s", code, stderr)
 	}
+	buildInfo, err := os.ReadFile(filepath.Join(out, "build-info.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(buildInfo, &document); err != nil {
+		t.Fatal(err)
+	}
+	target := document["targets"].([]any)[0].(map[string]any)["result"].(map[string]any)
+	selftest := target["selftest"].(map[string]any)
+	if frames := selftest["frames"].(float64); frames < 2 {
+		t.Fatalf("frames = %v, want at least 2", frames)
+	}
+	if hash, _ := selftest["state_hash"].(string); hash == "" {
+		t.Fatal("state_hash was not recorded")
+	}
+	planData, err := os.ReadFile(filepath.Join(project, ".fuzzfw", "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var plan map[string]any
+	if err := json.Unmarshal(planData, &plan); err != nil {
+		t.Fatal(err)
+	}
+	planned := plan["targets"].([]any)[0].(map[string]any)
+	if planned["state_probe"] != "sequence_state_probe" || planned["frame_reset"] != "sequence_state_frame_reset" {
+		t.Fatalf("state/frame contract missing from plan: %v", planned)
+	}
 }
 
 func TestCContextLifecyclePasses(t *testing.T) {

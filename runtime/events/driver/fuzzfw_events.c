@@ -4,6 +4,15 @@
 #include <string.h>
 
 static fuzzfw_input_stream g_input = {NULL, 0, 0};
+static uint64_t g_run_frames = 0;
+static uint64_t g_run_state_hash = 1469598103934665603ULL;
+
+static uint64_t mix_u64(uint64_t value) {
+    value ^= value >> 33;
+    value *= 0xff51afd7ed558ccdULL;
+    value ^= value >> 33;
+    return value;
+}
 
 void fuzzfw_input_bind(const uint8_t *data, size_t size) {
     g_input.data = data;
@@ -48,4 +57,24 @@ const uint8_t *fuzzfw_input_peek(size_t *available) {
         *available = g_input.size - g_input.cursor;
     }
     return g_input.data + g_input.cursor;
+}
+
+void fuzzfw_run_begin(void) {
+    g_run_frames = 0;
+    g_run_state_hash = 1469598103934665603ULL;
+}
+
+void fuzzfw_run_frame(uint32_t index, int state) {
+    g_run_frames++;
+    g_run_state_hash ^= mix_u64((uint64_t)index + 0x9e3779b97f4a7c15ULL);
+    g_run_state_hash ^= mix_u64((uint64_t)(uint32_t)state);
+    g_run_state_hash *= 1099511628211ULL;
+}
+
+uint64_t fuzzfw_run_frames(void) {
+    return g_run_frames;
+}
+
+uint64_t fuzzfw_run_state_hash(void) {
+    return g_run_state_hash;
 }

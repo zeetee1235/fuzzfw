@@ -82,6 +82,12 @@ func (b *Builder) runSelftest(target planner.TargetPlan, hp *harness.Plan, binar
 			if report.CoverageHash != "" {
 				seenCoverage[report.CoverageHash] = true
 			}
+			if report.Frames > result.Frames {
+				result.Frames = report.Frames
+			}
+			if report.StateHash != "" {
+				result.StateHash = report.StateHash
+			}
 		}
 		caseResult.Sanitizer = sanitizerKind(run.Stderr)
 		caseResult.Crash = run.ExitCode != 0 || run.Signal != 0 || run.TimedOut || caseResult.Sanitizer != ""

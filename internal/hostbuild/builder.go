@@ -345,7 +345,7 @@ func (b *Builder) compileTarget(
 		if err := fsutil.WriteFileAtomic(driverSource, runtimereplay.DriverSource, 0o644); err != nil {
 			return objects, delta, []diag.Diagnostic{diag.Newf(diag.EInternal, "cannot write replay driver: %v", err).WithTarget(target.Name)}, false
 		}
-		driverFlags := append([]string{"-I", b.Cfg.Root}, sanitizerFlags(b.Cfg)...)
+		driverFlags := append([]string{"-I", b.Cfg.Root, "-I", runtimeDir}, sanitizerFlags(b.Cfg)...)
 		driverFlags = append(driverFlags, b.Cfg.File.Host.Optimization, "-g", "-fno-omit-frame-pointer")
 		driverProfile := profile
 		driverProfile.CompileFlags = withoutCoverage(profile.CompileFlags)

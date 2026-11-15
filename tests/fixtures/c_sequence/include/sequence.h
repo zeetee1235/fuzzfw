@@ -5,6 +5,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-int frame_value(const uint8_t *data, size_t len);
+typedef struct SequenceState {
+    int state;
+    unsigned resets;
+} SequenceState;
+
+int sequence_state_init(SequenceState *state);
+void sequence_state_reset(SequenceState *state);
+void sequence_state_frame_reset(SequenceState *state);
+int sequence_state_probe(SequenceState *state);
+int frame_value(SequenceState *state, const uint8_t *data, size_t len);
 
 #endif

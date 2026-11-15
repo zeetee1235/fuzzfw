@@ -23,6 +23,12 @@ size_t fuzzfw_input_read(void *dst, size_t requested);
 size_t fuzzfw_input_remaining(void);
 const uint8_t *fuzzfw_input_peek(size_t *available);
 
+/* Optional state-machine observation used by sequence/state probes. */
+void fuzzfw_run_begin(void);
+void fuzzfw_run_frame(uint32_t index, int state);
+uint64_t fuzzfw_run_frames(void);
+uint64_t fuzzfw_run_state_hash(void);
+
 #ifdef __cplusplus
 }
 #endif

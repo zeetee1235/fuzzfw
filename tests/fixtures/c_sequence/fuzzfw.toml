@@ -20,3 +20,12 @@ input = "length_prefixed"
 max_frames = 8
 max_input_bytes = 64
 seeds = ["seeds"]
+state_probe = "sequence_state_probe"
+frame_reset = "sequence_state_frame_reset"
+
+[targets.context]
+kind = "opaque"
+size = 16
+init = "sequence_state_init"
+reset = "sequence_state_reset"
+arg = 0

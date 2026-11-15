@@ -68,3 +68,49 @@ func buildContextPlan(analysis *analyzer.Analysis, target config.Target) (*Conte
 func contextFunctionParams(params []string) bool {
 	return len(params) == 1 && strings.Contains(params[0], "*")
 }
+
+func validateStateProbe(analysis *analyzer.Analysis, target config.Target) *diag.Diagnostic {
+	fn, ok := findFactory(analysis, target.StateProbe)
+	if !ok {
+		d := diag.Newf(diag.EContextUnknown, "state probe %s is not declared", target.StateProbe).WithTarget(target.Name)
+		return &d
+	}
+	returnType, params := analyzer.ParseFunctionType(fn.Signature)
+	if returnType != "int" {
+		d := diag.Newf(diag.EContextInvalid, "state probe %s must return int", fn.QualifiedName).WithTarget(target.Name)
+		return &d
+	}
+	if target.Context != nil {
+		if !contextFunctionParams(params) {
+			d := diag.Newf(diag.EContextInvalid, "context state probe %s must take one pointer", fn.QualifiedName).WithTarget(target.Name)
+			return &d
+		}
+	} else if len(params) != 0 {
+		d := diag.Newf(diag.EContextInvalid, "state probe %s must take no arguments", fn.QualifiedName).WithTarget(target.Name)
+		return &d
+	}
+	return nil
+}
+
+func validateFrameReset(analysis *analyzer.Analysis, target config.Target) *diag.Diagnostic {
+	fn, ok := findFactory(analysis, target.FrameReset)
+	if !ok {
+		d := diag.Newf(diag.EContextUnknown, "frame reset %s is not declared", target.FrameReset).WithTarget(target.Name)
+		return &d
+	}
+	returnType, params := analyzer.ParseFunctionType(fn.Signature)
+	if returnType != "void" {
+		d := diag.Newf(diag.EContextInvalid, "frame reset %s must return void", fn.QualifiedName).WithTarget(target.Name)
+		return &d
+	}
+	if target.Context != nil {
+		if !contextFunctionParams(params) {
+			d := diag.Newf(diag.EContextInvalid, "context frame reset %s must take one pointer", fn.QualifiedName).WithTarget(target.Name)
+			return &d
+		}
+	} else if len(params) != 0 {
+		d := diag.Newf(diag.EContextInvalid, "frame reset %s must take no arguments", fn.QualifiedName).WithTarget(target.Name)
+		return &d
+	}
+	return nil
+}

@@ -26,7 +26,9 @@
         "factory": {"type": "object"},
         "context_object": {"type": "object"},
         "is_static_method": {"type": "boolean"},
-        "events": {"type": "array"}
+        "events": {"type": "array"},
+        "state_probe": {"type": "string"},
+        "frame_reset": {"type": "string"}
       }
     },
     "role_bindings": {"type": "array"},

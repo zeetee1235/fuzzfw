@@ -102,6 +102,8 @@ definitions, include paths, forced includes, and standards are preserved.
 | `max_input_bytes` | harness default | Per-target cap; must not exceed the global cap (0 inherits). |
 | `output_bytes` | unset | Allocated output capacity for explicit `OUTPUT_BUFFER`/`CAPACITY` roles. |
 | `max_frames` | `64` for `length_prefixed` | Maximum frames processed from one fuzz input. |
+| `state_probe` | unset | `int(void)` or `int(context *)` function called after each target/event sequence; its value is folded into the state hash. |
+| `frame_reset` | unset | `void(void)` or `void(context *)` function called after each frame in `length_prefixed` mode; requires `input = "length_prefixed"`. |
 | `setup` | unset | Explicit setup function called before the target. Must be declared by the included header. |
 | `teardown` | unset | Explicit teardown function called after the target. |
 | `factory` | unset | Explicit C++ factory symbol for a member function target. Value, reference, raw pointer, `std::unique_ptr`, and `std::shared_ptr` returns are recognized. |

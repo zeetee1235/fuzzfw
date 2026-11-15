@@ -9,6 +9,7 @@ import (
 
 	"github.com/fuzzfw/fuzzfw/internal/analyzer"
 	"github.com/fuzzfw/fuzzfw/internal/config"
+	"github.com/fuzzfw/fuzzfw/internal/diag"
 )
 
 func testFunction(params ...analyzer.Param) *analyzer.Function {
@@ -216,5 +217,52 @@ func TestHardwareBoundaryModels(t *testing.T) {
 	blocked, _, _ = evaluateHardwareBoundaries(map[string]bool{"RTOS_CONTEXT": true}, rtos, 1)
 	if blocked {
 		t.Fatal("modeled RTOS event should not be blocked")
+	}
+}
+
+func TestStateProbeAndFrameResetSignatures(t *testing.T) {
+	analysis := &analyzer.Analysis{Functions: []analyzer.Function{
+		{Name: "state_probe", QualifiedName: "state_probe", Signature: "int (void)"},
+		{Name: "frame_reset", QualifiedName: "frame_reset", Signature: "void (void)"},
+		{Name: "ctx_probe", QualifiedName: "ctx_probe", Signature: "int (Ctx *)"},
+		{Name: "ctx_frame_reset", QualifiedName: "ctx_frame_reset", Signature: "void (Ctx *)"},
+		{Name: "bad_probe", QualifiedName: "bad_probe", Signature: "void (void)"},
+		{Name: "bad_reset", QualifiedName: "bad_reset", Signature: "int (void)"},
+		{Name: "bad_ctx_probe", QualifiedName: "bad_ctx_probe", Signature: "int (void)"},
+	}}
+	target := config.Target{Name: "parse", StateProbe: "state_probe", FrameReset: "frame_reset"}
+	if diagnostic := validateStateProbe(analysis, target); diagnostic != nil {
+		t.Fatalf("valid probe rejected: %v", diagnostic)
+	}
+	if diagnostic := validateFrameReset(analysis, target); diagnostic != nil {
+		t.Fatalf("valid reset rejected: %v", diagnostic)
+	}
+	contextTarget := config.Target{Name: "parse", Context: &config.ContextConfig{Arg: 0}, StateProbe: "ctx_probe", FrameReset: "ctx_frame_reset"}
+	if diagnostic := validateStateProbe(analysis, contextTarget); diagnostic != nil {
+		t.Fatalf("valid context probe rejected: %v", diagnostic)
+	}
+	if diagnostic := validateFrameReset(analysis, contextTarget); diagnostic != nil {
+		t.Fatalf("valid context reset rejected: %v", diagnostic)
+	}
+	for _, testCase := range []struct {
+		name   string
+		target config.Target
+		probe  bool
+	}{
+		{"bad probe return", config.Target{Name: "parse", StateProbe: "bad_probe"}, true},
+		{"missing probe", config.Target{Name: "parse", StateProbe: "missing_probe"}, true},
+		{"bad reset return", config.Target{Name: "parse", FrameReset: "bad_reset"}, false},
+		{"missing reset", config.Target{Name: "parse", FrameReset: "missing_reset"}, false},
+		{"context probe without context argument", config.Target{Name: "parse", Context: &config.ContextConfig{Arg: 0}, StateProbe: "bad_ctx_probe"}, true},
+	} {
+		var diagnostic *diag.Diagnostic
+		if testCase.probe {
+			diagnostic = validateStateProbe(analysis, testCase.target)
+		} else {
+			diagnostic = validateFrameReset(analysis, testCase.target)
+		}
+		if diagnostic == nil {
+			t.Fatalf("%s: expected a diagnostic", testCase.name)
+		}
 	}
 }

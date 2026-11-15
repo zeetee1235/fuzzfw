@@ -37,14 +37,16 @@ behavior.
 - Remaining: automatic inner-TLV/nested-length inference is intentionally not
   claimed; use explicit roles or a wrapper.
 
-### 4. Sequence / stateful harness — complete for length-prefixed frames
+### 4. Sequence / stateful harness — framed execution and state observation complete
 
 - Length-prefixed frame sequence as one fuzz input.
 - Multiple target calls and/or event hooks per sequence.
 - State reset/rollback contract; per-frame and whole-sequence reproduction.
 - Done: `input = "length_prefixed"` with bounded frames, per-frame exact copy,
   per-frame events, and one setup/context/factory lifecycle.
-- Remaining: per-frame reset/rollback contract and state-transition coverage.
+- Done: optional `state_probe` after each call and `frame_reset` after each frame;
+  replay reports record frame count and a deterministic state hash.
+- Remaining: state-transition coverage metrics and protocol-semantic oracles.
 
 ### 5. Command dispatch extraction — constant dictionary complete
 

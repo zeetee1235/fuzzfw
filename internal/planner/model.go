@@ -188,6 +188,8 @@ type TargetPlan struct {
 	MaxInputBytes  int                `json:"max_input_bytes"`
 	OutputBytes    int                `json:"output_bytes,omitempty"`
 	MaxFrames      int                `json:"max_frames,omitempty"`
+	StateProbe     string             `json:"state_probe,omitempty"`
+	FrameReset     string             `json:"frame_reset,omitempty"`
 	Seeds          []string           `json:"seeds,omitempty"`
 	Dictionary     []string           `json:"dictionary,omitempty"`
 	Wrapper        *WrapperPlan       `json:"wrapper,omitempty"`

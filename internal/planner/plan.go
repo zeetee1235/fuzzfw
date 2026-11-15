@@ -198,6 +198,24 @@ func functionTargetPlan(
 			).WithTarget(target.Name))
 		}
 	}
+	if target.StateProbe != "" {
+		if diagnostic := validateStateProbe(analysis, target); diagnostic != nil {
+			tp.Classification = Blocked
+			tp.Diagnostics = append(tp.Diagnostics, *diagnostic)
+			tp.Reasons = append(tp.Reasons, "state_probe signature is invalid")
+		} else {
+			tp.Context.Provenance = append(tp.Context.Provenance, "state_probe")
+		}
+	}
+	if target.FrameReset != "" {
+		if diagnostic := validateFrameReset(analysis, target); diagnostic != nil {
+			tp.Classification = Blocked
+			tp.Diagnostics = append(tp.Diagnostics, *diagnostic)
+			tp.Reasons = append(tp.Reasons, "frame_reset signature is invalid")
+		} else {
+			tp.Context.Provenance = append(tp.Context.Provenance, "frame_reset")
+		}
+	}
 	tp.Platform.HostTriple, tp.Platform.TargetTriple = variantTriples(analysis, fn.VariantID)
 	if fact != nil {
 		var merged bool
@@ -240,6 +258,8 @@ func functionTargetPlan(
 	}
 	tp.OutputBytes = target.OutputBytes
 	tp.MaxFrames = target.MaxFrames
+	tp.StateProbe = target.StateProbe
+	tp.FrameReset = target.FrameReset
 	tp.Roles = roles.roles
 	tp.Constraints = roles.constraints
 	tp.Reasons = append(tp.Reasons, roles.reasons...)
@@ -408,6 +428,24 @@ func wrapperTargetPlan(cfg *config.Config, analysis *analyzer.Analysis, target c
 			tp.Diagnostics = append(tp.Diagnostics, diag.Newf(diag.EContextInvalid,
 				"event hook %s must have a visible void(void) declaration", event.Symbol,
 			).WithTarget(target.Name))
+		}
+	}
+	if target.StateProbe != "" {
+		if diagnostic := validateStateProbe(analysis, target); diagnostic != nil {
+			tp.Classification = Blocked
+			tp.Diagnostics = append(tp.Diagnostics, *diagnostic)
+			tp.Reasons = append(tp.Reasons, "state_probe signature is invalid")
+		} else {
+			tp.Context.Provenance = append(tp.Context.Provenance, "state_probe")
+		}
+	}
+	if target.FrameReset != "" {
+		if diagnostic := validateFrameReset(analysis, target); diagnostic != nil {
+			tp.Classification = Blocked
+			tp.Diagnostics = append(tp.Diagnostics, *diagnostic)
+			tp.Reasons = append(tp.Reasons, "frame_reset signature is invalid")
+		} else {
+			tp.Context.Provenance = append(tp.Context.Provenance, "frame_reset")
 		}
 	}
 	tp.Constraints = []Constraint{{

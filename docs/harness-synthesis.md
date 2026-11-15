@@ -232,6 +232,16 @@ bounded by `max_frames`. Truncated or oversized frames stop the sequence. The
 target still receives the original frame bytes; no protocol semantics are
 invented.
 
+`state_probe` observes the machine after each call. With a context it must be
+`int(context *)`; without one it must be `int(void)`. The observed value is
+folded into a deterministic state hash alongside the frame index, and the
+replay report records `frames` and `state_hash`. These are observations only;
+they do not invent transitions.
+
+`frame_reset` is an explicit per-frame cleanup contract. It must be
+`void(void)` or `void(context *)` and is called after the probe and events for
+each frame. The whole-input `context.reset` remains the teardown reset.
+
 ## C context objects
 
 Context pointers are not raw zeroed memory. A target can declare an explicit

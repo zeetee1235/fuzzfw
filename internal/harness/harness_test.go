@@ -125,11 +125,56 @@ func TestSequenceHarnessEmitsFrames(t *testing.T) {
 	plan.CopyInput = true
 	plan.InputKind = "length_prefixed"
 	plan.MaxFrames = 8
+	plan.Target.StateProbe = "state_probe"
+	plan.Target.FrameReset = "state_frame_reset"
 	source, _, err := Emit(plan, &config.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"while (fuzzfw_offset + 4 <= size", "fuzzfw_frame_len", "frame_copy", "fuzzfw_frames++"} {
+	for _, want := range []string{
+		"while (fuzzfw_offset + 4 <= size",
+		"fuzzfw_frame_len",
+		"frame_copy",
+		"fuzzfw_frames++",
+		"fuzzfw_run_begin();",
+		"int fuzzfw_state = state_probe();",
+		"fuzzfw_run_frame((uint32_t)fuzzfw_frames, fuzzfw_state);",
+		"state_frame_reset();",
+	} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("missing %q in:\n%s", want, source)
+		}
+	}
+}
+
+func TestSequenceHarnessContextStateProbe(t *testing.T) {
+	plan := testPlan(t)
+	plan.CopyInput = true
+	plan.InputKind = "length_prefixed"
+	plan.MaxFrames = 8
+	plan.Target.ContextObject = &planner.ContextObjectPlan{
+		Arg: 2, Size: 8, Init: "ctx_init", InitReturnsInt: true, Reset: "ctx_reset", Destroy: "ctx_destroy",
+	}
+	plan.Target.StateProbe = "ctx_state"
+	plan.Target.FrameReset = "ctx_frame_reset"
+	plan.RoleBindings = append(plan.RoleBindings, planner.RoleBinding{
+		Argument: 2, Role: planner.RoleContext, Source: "explicit_context", Type: "Ctx *",
+	})
+	source, _, err := Emit(plan, &config.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"void *fuzzfw_context = calloc(1, 8);",
+		"if (ctx_init((Ctx *)fuzzfw_context) != 0)",
+		"(void)parse(frame_copy, fuzzfw_frame_len, (Ctx *)fuzzfw_context);",
+		"int fuzzfw_state = ctx_state((Ctx *)fuzzfw_context);",
+		"fuzzfw_run_frame((uint32_t)fuzzfw_frames, fuzzfw_state);",
+		"ctx_frame_reset((Ctx *)fuzzfw_context);",
+		"ctx_reset((Ctx *)fuzzfw_context);",
+		"ctx_destroy((Ctx *)fuzzfw_context);",
+		"free(fuzzfw_context);",
+	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("missing %q in:\n%s", want, source)
 		}

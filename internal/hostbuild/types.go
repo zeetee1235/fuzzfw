@@ -46,6 +46,8 @@ type ReplayReport struct {
 	CoverageHash  string            `json:"coverage_hash"`
 	EntrySymbol   string            `json:"entry_symbol"`
 	EntryHit      *bool             `json:"entry_hit"`
+	Frames        uint64            `json:"frames,omitempty"`
+	StateHash     string            `json:"state_hash,omitempty"`
 	Iterations    []ReplayIteration `json:"iterations,omitempty"`
 }
 
@@ -81,6 +83,8 @@ type Selftest struct {
 	PersistentChecked bool         `json:"persistent_checked"`
 	PersistentStable  bool         `json:"persistent_stable"`
 	PersistentHashes  []string     `json:"persistent_hashes,omitempty"`
+	Frames            uint64       `json:"frames,omitempty"`
+	StateHash         string       `json:"state_hash,omitempty"`
 	Stable            bool         `json:"stable"`
 	InputUse          string       `json:"input_use"` // observed, weak_sensitivity, unknown
 	DistinctCoverage  int          `json:"distinct_coverage"`

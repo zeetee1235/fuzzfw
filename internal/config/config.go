@@ -113,6 +113,8 @@ type Target struct {
 	MaxInputBytes   int               `toml:"max_input_bytes"`
 	OutputBytes     int               `toml:"output_bytes"`
 	MaxFrames       int               `toml:"max_frames"`
+	StateProbe      string            `toml:"state_probe"`
+	FrameReset      string            `toml:"frame_reset"`
 	Setup           string            `toml:"setup"`
 	Teardown        string            `toml:"teardown"`
 	Factory         string            `toml:"factory"`
@@ -444,6 +446,9 @@ func normalize(file File, path, base string) (*Config, error) {
 		}
 		if target.Input == "length_prefixed" && target.MaxFrames == 0 {
 			target.MaxFrames = 64
+		}
+		if target.FrameReset != "" && target.Input != "length_prefixed" {
+			return nil, usageError(fmt.Sprintf("target %s: frame_reset requires input=length_prefixed", target.Name))
 		}
 		if target.OutputBytes < 0 || target.OutputBytes > 1024*1024 {
 			return nil, usageError(fmt.Sprintf("target %s: output_bytes must be between 0 and 1048576", target.Name))

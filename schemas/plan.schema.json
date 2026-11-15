@@ -60,6 +60,8 @@
           "max_input_bytes": {"type": "integer", "minimum": 1},
           "output_bytes": {"type": "integer", "minimum": 0},
           "max_frames": {"type": "integer", "minimum": 0},
+          "state_probe": {"type": "string"},
+          "frame_reset": {"type": "string"},
           "seeds": {"type": "array", "items": {"type": "string"}},
           "dictionary": {"type": "array", "items": {"type": "string"}},
           "wrapper": {"type": "object"}
