@@ -55,8 +55,9 @@ behavior.
 - Command-specific target or framing plan where evidence is sufficient.
 - Done: switch/compare constants become an engine dictionary; `c_commands`
   discovers command `0x42` from a benign `0x10` seed.
-- Remaining: command names/table extraction, per-command seed synthesis, and
-  command-level coverage.
+- Done: switch-case commands are extracted as `command_constants` and corpus
+  replay reports `commands_covered` as a heuristic coverage metric.
+- Remaining: command names/table extraction and per-command seed synthesis.
 
 ## P1 — precision
 

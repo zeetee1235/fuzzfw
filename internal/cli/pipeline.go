@@ -3,6 +3,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -329,10 +330,12 @@ func corpusFiles(dir string) ([]string, error) {
 }
 
 type corpusQuality struct {
-	Inputs         int
-	InputsWithData int
-	Frames         uint64
-	StateHashes    []string
+	Inputs           int
+	InputsWithData   int
+	Frames           uint64
+	StateHashes      []string
+	CommandConstants int
+	CommandsCovered  int
 }
 
 func replayCorpus(
@@ -346,6 +349,14 @@ func replayCorpus(
 	var diagnostics []diag.Diagnostic
 	quality := corpusQuality{}
 	states := map[string]bool{}
+	var commandTokens [][]byte
+	for _, token := range target.CommandConstants {
+		if decoded := planner.DictionaryTokenBytes(token); len(decoded) > 0 {
+			commandTokens = append(commandTokens, decoded)
+		}
+	}
+	quality.CommandConstants = len(commandTokens)
+	coveredCommands := map[int]bool{}
 	dir := out.TargetCorpus(target.Name)
 	files, err := corpusFiles(dir)
 	if err != nil {
@@ -359,6 +370,11 @@ func replayCorpus(
 			diagnostics = append(diagnostics, diag.Newf(diag.EArtifactInvalid,
 				"cannot read corpus file %s: %v", file, err).WithTarget(target.Name))
 			continue
+		}
+		for index, token := range commandTokens {
+			if bytes.Contains(data, token) {
+				coveredCommands[index] = true
+			}
 		}
 		outcome := triage.RunOnce(ctx, cfg, build, data, target.Name, "", 20*time.Second)
 		if outcome.Report != nil {
@@ -382,6 +398,7 @@ func replayCorpus(
 		quality.StateHashes = append(quality.StateHashes, hash)
 	}
 	sort.Strings(quality.StateHashes)
+	quality.CommandsCovered = len(coveredCommands)
 	return raw, quality, diagnostics
 }
 

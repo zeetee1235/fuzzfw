@@ -79,3 +79,85 @@ func dictionaryToken(value string) string {
 	b.WriteByte('"')
 	return b.String()
 }
+
+// BuildCommandConstants extracts discriminator constants from switch cases and
+// IR comparison uses. The result is a heuristic token list, not a grammar.
+func BuildCommandConstants(fn *analyzer.Function, fact *analyzer.IRFunctionFact, excludedArgs ...int) []string {
+	values := append([]string(nil), fn.CaseConstants...)
+	excluded := map[int]bool{}
+	for _, index := range excludedArgs {
+		if index >= 0 {
+			excluded[index] = true
+		}
+	}
+	if fact != nil {
+		for _, arg := range fact.Arguments {
+			if excluded[arg.Index] {
+				continue
+			}
+			for _, use := range arg.ObservedUse {
+				if strings.HasPrefix(use, "compare_constant:") {
+					values = append(values, strings.TrimPrefix(use, "compare_constant:"))
+				}
+			}
+		}
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, value := range values {
+		token := dictionaryToken(value)
+		if token == "" || seen[token] {
+			continue
+		}
+		seen[token] = true
+		out = append(out, token)
+		if len(out) >= 64 {
+			break
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// DictionaryTokenBytes decodes a token produced by dictionaryToken back into
+// the byte sequence it represents.
+func DictionaryTokenBytes(token string) []byte {
+	if len(token) < 2 || token[0] != '"' || token[len(token)-1] != '"' {
+		return nil
+	}
+	body := token[1 : len(token)-1]
+	out := make([]byte, 0, len(body))
+	for i := 0; i < len(body); i++ {
+		if body[i] != '\\' {
+			out = append(out, body[i])
+			continue
+		}
+		i++
+		if i >= len(body) {
+			return nil
+		}
+		switch body[i] {
+		case '\\', '"':
+			out = append(out, body[i])
+		case 'n':
+			out = append(out, '\n')
+		case 'r':
+			out = append(out, '\r')
+		case 't':
+			out = append(out, '\t')
+		case 'x':
+			if i+2 >= len(body) {
+				return nil
+			}
+			value, err := strconv.ParseUint(body[i+1:i+3], 16, 8)
+			if err != nil {
+				return nil
+			}
+			out = append(out, byte(value))
+			i += 2
+		default:
+			out = append(out, body[i])
+		}
+	}
+	return out
+}

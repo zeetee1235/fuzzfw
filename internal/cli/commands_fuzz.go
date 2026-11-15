@@ -171,6 +171,8 @@ func runFuzz(ctx context.Context, global globalOptions, args []string) (int, err
 		sum.CorpusFrames = quality.Frames
 		sum.DistinctStates = len(quality.StateHashes)
 		sum.StateHashes = quality.StateHashes
+		sum.CommandConstants = quality.CommandConstants
+		sum.CommandsCovered = quality.CommandsCovered
 		if built.Result.Status == "smoke_crashed" && hasTargetCrash(findings) {
 			if built.Result.FuzzBinary != "" {
 				sum.Status = "fuzzable"

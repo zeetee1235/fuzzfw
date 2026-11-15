@@ -66,6 +66,7 @@
           "invariant_args": {"type": "integer", "minimum": 1},
           "seeds": {"type": "array", "items": {"type": "string"}},
           "dictionary": {"type": "array", "items": {"type": "string"}},
+          "command_constants": {"type": "array", "items": {"type": "string"}},
           "wrapper": {"type": "object"}
         }
       }

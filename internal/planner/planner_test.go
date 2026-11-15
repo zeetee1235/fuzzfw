@@ -303,3 +303,26 @@ func TestInvariantCheckSignatures(t *testing.T) {
 		t.Fatal("void target return should be rejected")
 	}
 }
+
+func TestCommandConstantsExcludeLengthAndDecode(t *testing.T) {
+	fn := &analyzer.Function{CaseConstants: []string{"16", "66"}}
+	fact := &analyzer.IRFunctionFact{Arguments: []analyzer.IRArgument{
+		{Index: 0, ObservedUse: []string{"compare_constant:1"}},
+		{Index: 1, ObservedUse: []string{"compare_constant:2"}},
+	}}
+	constants := BuildCommandConstants(fn, fact, 1)
+	if len(constants) != 3 {
+		t.Fatalf("constants = %v", constants)
+	}
+	for _, token := range constants {
+		if decoded := DictionaryTokenBytes(token); len(decoded) == 0 {
+			t.Fatalf("cannot decode %q", token)
+		}
+	}
+	if got := string(DictionaryTokenBytes(constants[0])); got != "\x01" {
+		t.Fatalf("first constant = %q", got)
+	}
+	if got := string(DictionaryTokenBytes(`"\x42"`)); got != "B" {
+		t.Fatalf("decode = %q", got)
+	}
+}

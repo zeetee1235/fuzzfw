@@ -264,6 +264,7 @@ func functionTargetPlan(
 	}
 
 	roles := inferRoles(fn, fact, target, maxInput)
+	tp.CommandConstants = BuildCommandConstants(fn, fact, roles.input.LengthArg, roles.input.CapacityArg)
 	tp.InputModel = roles.input
 	if target.Input != "" {
 		tp.InputModel.Kind = target.Input

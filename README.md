@@ -155,8 +155,8 @@ See [configuration](docs/reference/configuration.md) and
 - Explicit output buffers with configured capacity and overrun detection.
 - Post-call return/output invariant hooks that become triaged
   `target_invariant` findings.
-- Per-target corpus quality metrics for replayed inputs, executed frames, and
-  distinct observed states.
+- Per-target corpus quality metrics for replayed inputs, executed frames,
+  distinct observed states, and heuristic command coverage.
 - Length-prefixed multi-frame sequences with bounded per-frame target calls,
   state probing, per-frame reset hooks, and recorded state hashes.
 - Deterministic command/magic-constant dictionaries passed to libFuzzer and

@@ -342,6 +342,14 @@ func TestCommandDictionaryGenerated(t *testing.T) {
 	if !strings.Contains(string(data), "\\x42") {
 		t.Fatalf("command constant missing from dictionary: %s", data)
 	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if got := target["command_constants"].(float64); got != 2 {
+		t.Fatalf("command_constants = %v, want 2", got)
+	}
+	if got := target["commands_covered"].(float64); got != 1 {
+		t.Fatalf("commands_covered = %v, want 1 for the benign command seed", got)
+	}
 }
 
 func TestLengthPrefixedSequencePasses(t *testing.T) {

@@ -228,7 +228,10 @@ wrapping is sometimes intentional and would otherwise create noise.
 ## Constant dictionary
 
 The planner extracts integer/character/string constants from the target and
-comparison facts into a small deterministic dictionary. Build writes it as
+comparison facts into a small deterministic dictionary. Switch-case constants
+and non-length comparison constants are also recorded separately as
+`command_constants`; corpus replay reports how many of those tokens appear in
+the prepared corpus. Build writes it as
 `dictionary.txt` and the engine adapter passes it to libFuzzer (`-dict=`) or
 honggfuzz (`--dict`). This helps command IDs, magic values, and parser
 constants without inventing a protocol grammar.
@@ -266,7 +269,9 @@ observation metrics:
 - `corpus_inputs`: files replayed;
 - `inputs_with_frames`: inputs that executed at least one target/frame call;
 - `corpus_frames`: maximum frames observed in one input;
-- `distinct_states` / `state_hashes`: distinct observed state hashes.
+- `distinct_states` / `state_hashes`: distinct observed state hashes;
+- `command_constants` / `commands_covered`: heuristic switch-case/compare
+  tokens observed in the corpus.
 
 A truncated frame yields zero frames and is not counted as a state. These
 metrics report reachability of the harness contract, not protocol validity:

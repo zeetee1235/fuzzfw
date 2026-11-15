@@ -251,6 +251,7 @@ func (idx *astIndex) buildFunction(node *astNode, qualified, source string, vari
 	fn.GlobalWrites = sortedKeys(body.writes)
 	fn.HardwareFlags = sortedKeys(body.flags)
 	fn.Constants = uniqueStrings(body.constants)
+	fn.CaseConstants = uniqueStrings(body.cases)
 	fn.Reasons = append(fn.Reasons, body.reasons...)
 	fn.Evidence = append(fn.Evidence, body.evidence...)
 	return fn
@@ -281,6 +282,7 @@ func functionID(fn Function) string {
 type bodyInfo struct {
 	calls     []CallRef
 	constants []string
+	cases     []string
 	paramIDs  map[string]int
 	indirect  []string
 	reads     map[string]bool
@@ -317,6 +319,11 @@ func (idx *astIndex) walkBody(node *astNode, source string, writeCtx bool, info 
 	if node.Kind == "IntegerLiteral" || node.Kind == "StringLiteral" || node.Kind == "CharacterLiteral" {
 		if value := astValueString(node); value != "" {
 			info.constants = append(info.constants, value)
+		}
+	}
+	if node.Kind == "CaseStmt" && len(node.Inner) > 0 {
+		if value := firstIntegerLiteral(&node.Inner[0]); value != "" {
+			info.cases = append(info.cases, value)
 		}
 	}
 	if node.Kind == "GCCAsmStmt" || node.Kind == "MSAsmStmt" {
@@ -670,4 +677,16 @@ func parameterIndex(node *astNode, params map[string]int) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+func firstIntegerLiteral(node *astNode) string {
+	if node.Kind == "IntegerLiteral" {
+		return astValueString(node)
+	}
+	for i := range node.Inner {
+		if value := firstIntegerLiteral(&node.Inner[i]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
