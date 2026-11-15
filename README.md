@@ -152,7 +152,8 @@ See [configuration](docs/reference/configuration.md) and
   input-use evidence, stability, corpus replay, and finding reproduction.
 - Adapter contracts and user wrapper escape hatch.
 - C++ free functions/namespaces and member functions through explicit
-  factory/RAII paths (value, raw pointer + destroy, `unique_ptr`, `shared_ptr`).
+  factory/RAII paths (value, reference with external lifetime, raw pointer +
+  destroy, `unique_ptr`, `shared_ptr`).
 - libFuzzer and honggfuzz adapters end-to-end tested.
 - IR loop-bound/data-dependence evidence and compare-constant facts.
 - Finding minimization and baseline bootstrap.
@@ -208,8 +209,13 @@ go test -tags=integration ./tests/integration/...
 make lint
 
 # Optional: requires honggfuzz/hfuzz-clang/hfuzz-clang++ in PATH
+# Includes an unseeded discovery test against tests/fixtures/c_vuln.
 go test -tags='integration honggfuzz' ./tests/integration/...
 ```
+
+The discovery test starts with benign seeds only and passes when honggfuzz
+produces a new reproducible `target_crash`; it is not based on a pre-seeded
+crash file.
 
 ## License
 
