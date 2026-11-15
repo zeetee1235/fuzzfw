@@ -111,6 +111,7 @@ type Target struct {
 	Required        bool              `toml:"required"`
 	Input           string            `toml:"input"`
 	MaxInputBytes   int               `toml:"max_input_bytes"`
+	OutputBytes     int               `toml:"output_bytes"`
 	Setup           string            `toml:"setup"`
 	Teardown        string            `toml:"teardown"`
 	Factory         string            `toml:"factory"`
@@ -122,6 +123,17 @@ type Target struct {
 	Args            []string          `toml:"args"`
 	BuildVariant    string            `toml:"build_variant"`
 	Events          []EventHookConfig `toml:"events"`
+	Context         *ContextConfig    `toml:"context"`
+}
+
+// ContextConfig describes an explicit C context object and its lifecycle.
+type ContextConfig struct {
+	Kind    string `toml:"kind"`
+	Size    int    `toml:"size"`
+	Init    string `toml:"init"`
+	Reset   string `toml:"reset"`
+	Destroy string `toml:"destroy"`
+	Arg     int    `toml:"arg"`
 }
 
 // EventHookConfig is an explicit event dispatch around the target call.
@@ -401,6 +413,20 @@ func normalize(file File, path, base string) (*Config, error) {
 		if target.Destroy != "" && target.Factory == "" {
 			return nil, usageError(fmt.Sprintf("target %s: destroy requires factory", target.Name))
 		}
+		if target.Context != nil {
+			if target.Context.Kind == "" {
+				target.Context.Kind = "opaque"
+			}
+			if target.Context.Kind != "opaque" {
+				return nil, usageError(fmt.Sprintf("target %s: context.kind must be opaque", target.Name))
+			}
+			if target.Context.Size <= 0 {
+				return nil, usageError(fmt.Sprintf("target %s: context.size must be positive", target.Name))
+			}
+			if target.Context.Init == "" {
+				return nil, usageError(fmt.Sprintf("target %s: context.init is required", target.Name))
+			}
+		}
 		if target.WrapperSource != "" && target.Input == "" {
 			target.Input = "manual_wrapper"
 		}
@@ -411,6 +437,9 @@ func normalize(file File, path, base string) (*Config, error) {
 		}
 		if target.Input == "manual_wrapper" && target.WrapperSource == "" {
 			return nil, usageError(fmt.Sprintf("target %s: manual_wrapper requires wrapper_source and wrapper_symbol", target.Name))
+		}
+		if target.OutputBytes < 0 || target.OutputBytes > 1024*1024 {
+			return nil, usageError(fmt.Sprintf("target %s: output_bytes must be between 0 and 1048576", target.Name))
 		}
 		if target.MaxInputBytes < 0 || (target.MaxInputBytes > file.Harness.MaxInputBytes && file.Harness.MaxInputBytes > 0) {
 			return nil, usageError(fmt.Sprintf("target %s: max_input_bytes must be 0 (inherit) or between 1 and %d", target.Name, file.Harness.MaxInputBytes))

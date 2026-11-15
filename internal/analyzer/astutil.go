@@ -221,6 +221,11 @@ func ParseReturnType(signature string) string {
 	return returnType
 }
 
+// ParseFunctionType returns the return type and top-level parameter types.
+func ParseFunctionType(signature string) (string, []string) {
+	return splitFunctionType(signature)
+}
+
 func isHeaderFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".h", ".hh", ".hpp", ".hxx", ".h++", ".inc":

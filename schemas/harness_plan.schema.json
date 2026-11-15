@@ -24,6 +24,7 @@
         "source": {"type": "string"},
         "method_name": {"type": "string"},
         "factory": {"type": "object"},
+        "context_object": {"type": "object"},
         "is_static_method": {"type": "boolean"},
         "events": {"type": "array"}
       }
@@ -34,6 +35,7 @@
     "platform": {"type": "object"},
     "analysis": {"type": "object"},
     "copy_input": {"type": "boolean"},
+    "output_bytes": {"type": "integer", "minimum": 0},
     "validations": {"type": "array", "items": {"type": "string"}},
     "provenance": {"type": "array", "items": {"type": "string"}},
     "diagnostics": {"type": "array"}

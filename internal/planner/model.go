@@ -63,6 +63,9 @@ type InputModel struct {
 	BufferArg   int    `json:"buffer_arg"`
 	LengthArg   int    `json:"length_arg"`
 	CapacityArg int    `json:"capacity_arg,omitempty"`
+	ContextArg  int    `json:"context_arg,omitempty"`
+	OutputArg   int    `json:"output_arg,omitempty"`
+	OutputBytes int    `json:"output_bytes,omitempty"`
 }
 
 // RoleBinding assigns one argument a typed mutation role.
@@ -113,6 +116,16 @@ type AnalysisEvidence struct {
 type EventHook struct {
 	Symbol string `json:"symbol"`
 	Phase  string `json:"phase"`
+}
+
+// ContextObjectPlan describes an explicit C context allocation and lifecycle.
+type ContextObjectPlan struct {
+	Arg            int    `json:"arg"`
+	Size           int    `json:"size"`
+	Init           string `json:"init"`
+	InitReturnsInt bool   `json:"init_returns_int,omitempty"`
+	Reset          string `json:"reset,omitempty"`
+	Destroy        string `json:"destroy,omitempty"`
 }
 
 // FactoryPlan describes an explicit C++ object construction/destruction path.
@@ -173,9 +186,11 @@ type TargetPlan struct {
 	Reasons        []string           `json:"reasons,omitempty"`
 	Diagnostics    []diag.Diagnostic  `json:"diagnostics,omitempty"`
 	MaxInputBytes  int                `json:"max_input_bytes"`
+	OutputBytes    int                `json:"output_bytes,omitempty"`
 	Seeds          []string           `json:"seeds,omitempty"`
 	Wrapper        *WrapperPlan       `json:"wrapper,omitempty"`
 	Factory        *FactoryPlan       `json:"factory,omitempty"`
+	ContextObject  *ContextObjectPlan `json:"context_object,omitempty"`
 	IsStaticMethod bool               `json:"is_static_method,omitempty"`
 	Events         []EventHook        `json:"events,omitempty"`
 	Function       *analyzer.Function `json:"-"`

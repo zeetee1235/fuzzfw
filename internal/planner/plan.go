@@ -175,6 +175,18 @@ func functionTargetPlan(
 		tp.Header = fsutil.Rel(cfg.Root, target.Header)
 	}
 	tp.Seeds = expandSeeds(cfg.Root, target.Seeds)
+	if target.Context != nil {
+		contextObject, contextDiags := buildContextPlan(analysis, target)
+		tp.Diagnostics = append(tp.Diagnostics, contextDiags...)
+		if contextObject == nil {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "C context lifecycle could not be validated")
+		} else {
+			tp.ContextObject = contextObject
+			tp.Context.Provenance = append(tp.Context.Provenance, "explicit_context")
+			tp.Reasons = append(tp.Reasons, "C context allocated and initialized by explicit lifecycle")
+		}
+	}
 	for _, event := range target.Events {
 		tp.Events = append(tp.Events, EventHook{Symbol: event.Symbol, Phase: event.Phase})
 		if !hasVoidFunction(analysis, event.Symbol) {
@@ -216,6 +228,7 @@ func functionTargetPlan(
 
 	roles := inferRoles(fn, fact, target, maxInput)
 	tp.InputModel = roles.input
+	tp.OutputBytes = target.OutputBytes
 	tp.Roles = roles.roles
 	tp.Constraints = roles.constraints
 	tp.Reasons = append(tp.Reasons, roles.reasons...)
@@ -224,6 +237,20 @@ func functionTargetPlan(
 		tp.Classification = Blocked
 	} else if roles.ambiguous {
 		tp.Classification = Adaptable
+	}
+	if target.Context != nil {
+		hasContextRole := false
+		for _, role := range roles.roles {
+			if role.Role == RoleContext {
+				hasContextRole = true
+			}
+		}
+		if !hasContextRole {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "targets.context is configured but no CONTEXT role was bound")
+			tp.Diagnostics = append(tp.Diagnostics, diag.New(diag.EContextInvalid,
+				"targets.context requires a distinct context pointer argument").WithTarget(target.Name))
+		}
 	}
 
 	if fn.Name == "main" {
@@ -362,6 +389,18 @@ func wrapperTargetPlan(cfg *config.Config, analysis *analyzer.Analysis, target c
 		Reasons: []string{"explicit user wrapper preserves original code; build and self-test gates still apply"},
 	}
 	tp.Seeds = expandSeeds(cfg.Root, target.Seeds)
+	if target.Context != nil {
+		contextObject, contextDiags := buildContextPlan(analysis, target)
+		tp.Diagnostics = append(tp.Diagnostics, contextDiags...)
+		if contextObject == nil {
+			tp.Classification = Blocked
+			tp.Reasons = append(tp.Reasons, "C context lifecycle could not be validated")
+		} else {
+			tp.ContextObject = contextObject
+			tp.Context.Provenance = append(tp.Context.Provenance, "explicit_context")
+			tp.Reasons = append(tp.Reasons, "C context allocated and initialized by explicit lifecycle")
+		}
+	}
 	for _, event := range target.Events {
 		tp.Events = append(tp.Events, EventHook{Symbol: event.Symbol, Phase: event.Phase})
 		if !hasVoidFunction(analysis, event.Symbol) {

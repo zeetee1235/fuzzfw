@@ -283,6 +283,36 @@ func TestNativeIRLoopBoundEvidence(t *testing.T) {
 	}
 }
 
+func TestOutputCapacityOverrunDetected(t *testing.T) {
+	project := fixture("c_output")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 1 {
+		t.Fatalf("output overrun check exit = %d, want 1\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	findings := summary["findings"].([]any)
+	if len(findings) == 0 || findings[0].(map[string]any)["origin"] != "target_crash" {
+		t.Fatalf("unexpected findings: %v", findings)
+	}
+}
+
+func TestCContextLifecyclePasses(t *testing.T) {
+	project := fixture("c_context")
+	ensureBuild(t, project)
+	out := t.TempDir()
+	_, stderr, code := runCLI(t, project, "check", "--engine", "replay", "--time", "1s", "--output", out, "--quiet")
+	if code != 0 {
+		t.Fatalf("C context check exit = %d\n%s", code, stderr)
+	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	target := summary["targets"].([]any)[0].(map[string]any)
+	if target["status"] != "selftest_passed" && target["status"] != "fuzzable" {
+		t.Fatalf("C context status = %v", target["status"])
+	}
+}
+
 func TestExactInputCopyDetectsOverread(t *testing.T) {
 	project := fixture("c_overread")
 	ensureBuild(t, project)

@@ -151,6 +151,8 @@ See [configuration](docs/reference/configuration.md) and
 - Original TU host build with ASan/UBSan, coverage, entry reachability,
   input-use evidence, stability, corpus replay, and finding reproduction.
 - Adapter contracts and user wrapper escape hatch.
+- C context objects with explicit init/reset/destroy lifecycle.
+- Explicit output buffers with configured capacity and overrun detection.
 - C++ free functions/namespaces and member functions through explicit
   factory/RAII paths (value, reference with external lifetime, raw pointer +
   destroy, `unique_ptr`, `shared_ptr`).

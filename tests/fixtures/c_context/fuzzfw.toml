@@ -1,0 +1,28 @@
+schema_version = 1
+
+[project]
+name = "c-context-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+
+[[targets]]
+name = "parser_context_process"
+symbol = "parser_context_process"
+source = "src/context.c"
+header = "include/context.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 32
+seeds = ["seeds"]
+
+[targets.context]
+kind = "opaque"
+size = 16
+init = "parser_context_init"
+reset = "parser_context_reset"
+arg = 0

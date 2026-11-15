@@ -24,19 +24,20 @@ const SchemaVersion = 2
 
 // Target is the typed entry description.
 type Target struct {
-	Name           string               `json:"name"`
-	FunctionID     string               `json:"function_id,omitempty"`
-	Language       string               `json:"language"`
-	EntryKind      string               `json:"entry_kind"`
-	LinkSymbol     string               `json:"link_symbol"`
-	CallSymbol     string               `json:"call_symbol,omitempty"`
-	SourceHeader   string               `json:"source_header,omitempty"`
-	BuildVariant   string               `json:"build_variant,omitempty"`
-	Source         string               `json:"source,omitempty"`
-	MethodName     string               `json:"method_name,omitempty"`
-	Factory        *planner.FactoryPlan `json:"factory,omitempty"`
-	IsStaticMethod bool                 `json:"is_static_method,omitempty"`
-	Events         []planner.EventHook  `json:"events,omitempty"`
+	Name           string                     `json:"name"`
+	FunctionID     string                     `json:"function_id,omitempty"`
+	Language       string                     `json:"language"`
+	EntryKind      string                     `json:"entry_kind"`
+	LinkSymbol     string                     `json:"link_symbol"`
+	CallSymbol     string                     `json:"call_symbol,omitempty"`
+	SourceHeader   string                     `json:"source_header,omitempty"`
+	BuildVariant   string                     `json:"build_variant,omitempty"`
+	Source         string                     `json:"source,omitempty"`
+	MethodName     string                     `json:"method_name,omitempty"`
+	Factory        *planner.FactoryPlan       `json:"factory,omitempty"`
+	ContextObject  *planner.ContextObjectPlan `json:"context_object,omitempty"`
+	IsStaticMethod bool                       `json:"is_static_method,omitempty"`
+	Events         []planner.EventHook        `json:"events,omitempty"`
 }
 
 // Plan is the harness generator's input/output contract.
@@ -51,6 +52,7 @@ type Plan struct {
 	Platform      planner.PlatformPlan     `json:"platform"`
 	Analysis      planner.AnalysisEvidence `json:"analysis"`
 	CopyInput     bool                     `json:"copy_input"`
+	OutputBytes   int                      `json:"output_bytes,omitempty"`
 	Validations   []string                 `json:"validations"`
 	Provenance    []string                 `json:"provenance"`
 	Diagnostics   []diag.Diagnostic        `json:"diagnostics,omitempty"`
@@ -77,6 +79,7 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 			Analysis:    target.Analysis,
 			Validations: defaultValidations(),
 			CopyInput:   cfg.File.Harness.CopyInput,
+			OutputBytes: target.OutputBytes,
 			Provenance:  append([]string{"explicit_config", "user_wrapper", "fuzzfw_harness"}, target.Analysis.Provenance...),
 		}
 		if err := plan.Finalize(); err != nil {
@@ -105,6 +108,7 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 			Source:         target.Source,
 			MethodName:     methodName(target.QualifiedName),
 			Factory:        target.Factory,
+			ContextObject:  target.ContextObject,
 			IsStaticMethod: target.IsStaticMethod,
 			Events:         append([]planner.EventHook(nil), target.Events...),
 		},
@@ -115,6 +119,7 @@ func BuildPlan(target planner.TargetPlan, cfg *config.Config) (*Plan, error) {
 		Analysis:     target.Analysis,
 		Validations:  defaultValidations(),
 		CopyInput:    cfg.File.Harness.CopyInput,
+		OutputBytes:  target.OutputBytes,
 		Provenance:   append([]string{"project_build", "ast", "fuzzfw_harness"}, target.Analysis.Provenance...),
 	}
 	if plan.Target.LinkSymbol == "" {
@@ -220,7 +225,13 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 			lengthArg = arg
 		case planner.RoleCapacity:
 			capacityArgs[arg] = true
-		case planner.RoleContext, planner.RoleConfig, planner.RoleOutputBuffer:
+		case planner.RoleContext:
+			// validated below against ContextObject
+		case planner.RoleOutputBuffer:
+			if plan.OutputBytes <= 0 {
+				return "", "", fmt.Errorf("output buffer role requires output_bytes")
+			}
+		case planner.RoleConfig:
 			return "", "", fmt.Errorf("argument %d role %s requires a user wrapper", arg, role.Role)
 		default:
 			return "", "", fmt.Errorf("argument %d has unsupported role %s", arg, role.Role)
@@ -267,6 +278,14 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 		return "", "", fmt.Errorf("logical length type missing")
 	}
 
+	contextRole, hasContext := roles[targetContextArg(plan)]
+	if plan.Target.ContextObject != nil && !hasContext {
+		return "", "", fmt.Errorf("context object requires a CONTEXT role binding")
+	}
+	contextCast := ""
+	if hasContext {
+		contextCast = contextPointerCast(contextRole.Type, "fuzzfw_context")
+	}
 	b.WriteString("    fuzzfw_input_bind(data, size);\n")
 	needsInputCopy := plan.CopyInput && bufferRole == planner.RoleFuzzBytes
 	needsCopy := bufferRole == planner.RoleFuzzBytesMutable
@@ -294,8 +313,28 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 		b.WriteString("        if (copy == NULL) return 0;\n")
 		b.WriteString("    }\n")
 	}
+	needsOutput := false
+	for _, role := range roles {
+		if role.Role == planner.RoleOutputBuffer {
+			needsOutput = true
+		}
+	}
+	if needsOutput {
+		fmt.Fprintf(&b, "    uint8_t *output = (uint8_t *)calloc(1, %d);\n", plan.OutputBytes)
+		b.WriteString("    if (output == NULL) return 0;\n")
+	}
 	for _, setup := range plan.Context.Setup {
 		fmt.Fprintf(&b, "    %s();\n", setup)
+	}
+	if plan.Target.ContextObject != nil {
+		ctx := plan.Target.ContextObject
+		fmt.Fprintf(&b, "    void *fuzzfw_context = calloc(1, %d);\n", ctx.Size)
+		b.WriteString("    if (fuzzfw_context == NULL) return 0;\n")
+		if ctx.InitReturnsInt {
+			fmt.Fprintf(&b, "    if (%s(%s) != 0) { free(fuzzfw_context); return 0; }\n", ctx.Init, contextCast)
+		} else {
+			fmt.Fprintf(&b, "    %s(%s);\n", ctx.Init, contextCast)
+		}
 	}
 	for _, event := range plan.Target.Events {
 		if event.Phase == "before" {
@@ -330,8 +369,21 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 			}
 		case planner.RoleFuzzBytesMutable:
 			args = append(args, "copy")
-		case planner.RoleLogicalLength, planner.RoleCapacity:
+		case planner.RoleLogicalLength:
 			args = append(args, castLength(role.Type, "size"))
+		case planner.RoleCapacity:
+			if needsOutput {
+				args = append(args, castLength(role.Type, fmt.Sprintf("%d", plan.OutputBytes)))
+			} else {
+				args = append(args, castLength(role.Type, "size"))
+			}
+		case planner.RoleOutputBuffer:
+			args = append(args, outputPointerCast(role.Type, "output"))
+		case planner.RoleContext:
+			if plan.Target.ContextObject == nil {
+				return "", "", fmt.Errorf("context role has no context object plan")
+			}
+			args = append(args, contextCast)
 		default:
 			return "", "", fmt.Errorf("argument %d role %s cannot be emitted", arg, role.Role)
 		}
@@ -370,9 +422,22 @@ func Emit(plan *Plan, cfg *config.Config) (string, string, error) {
 	for _, teardown := range plan.Context.Teardown {
 		fmt.Fprintf(&b, "    %s();\n", teardown)
 	}
+	if plan.Target.ContextObject != nil {
+		ctx := plan.Target.ContextObject
+		if ctx.Reset != "" {
+			fmt.Fprintf(&b, "    %s(%s);\n", ctx.Reset, contextCast)
+		}
+		if ctx.Destroy != "" {
+			fmt.Fprintf(&b, "    %s(%s);\n", ctx.Destroy, contextCast)
+		}
+		b.WriteString("    free(fuzzfw_context);\n")
+	}
 	b.WriteString("    fuzzfw_input_clear();\n")
 	if needsInputCopy {
 		b.WriteString("    free((void *)input);\n")
+	}
+	if needsOutput {
+		b.WriteString("    free(output);\n")
 	}
 	if needsCopy {
 		b.WriteString("    free(copy);\n")
@@ -498,4 +563,27 @@ func methodName(qualified string) string {
 		return qualified[idx+2:]
 	}
 	return qualified
+}
+
+func targetContextArg(plan *Plan) int {
+	if plan.Target.ContextObject == nil {
+		return -1
+	}
+	return plan.Target.ContextObject.Arg
+}
+
+func contextPointerCast(typeName, value string) string {
+	trimmed := strings.TrimSpace(typeName)
+	if trimmed == "" || trimmed == "void *" {
+		return value
+	}
+	return "(" + trimmed + ")" + value
+}
+
+func outputPointerCast(typeName, value string) string {
+	trimmed := strings.TrimSpace(typeName)
+	if trimmed == "" || trimmed == "void *" {
+		return value
+	}
+	return "(" + trimmed + ")" + value
 }

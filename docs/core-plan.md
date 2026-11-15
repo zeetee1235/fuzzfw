@@ -15,22 +15,24 @@ behavior.
 - Acceptance: `tests/fixtures/c_overread` reads byte 4 from a two-byte input and
   is reported as `address:heap-buffer-overflow` at `R1_HOST_REPRODUCED`.
 
-### 2. C context/session objects — next
+### 2. C context/session objects — complete
 
 - Explicit opaque/struct context allocation.
 - Init/reset/destroy contract; no zeroed object accepted without init.
 - Context argument role; per-input reset verification.
-- Acceptance: parser with `ParserContext *` builds and finds a test bug without a
-  user wrapper; invalid init/reset is blocked.
+- Done: `c_context` fixture passes with explicit init/reset, exact allocation,
+  typed pointer, and persistent reset verification. Invalid signatures are
+  rejected by the planner.
 
-### 3. Structured length/frame/output roles
+### 3. Structured length/frame/output roles — output/capacity complete; frame work next
 
 - `OUTPUT_BUFFER` + configured capacity; capacity/`len` relation evidence.
 - Multiple-length and length-prefix contract; nested length fields remain
   explicit.
 - Integer-overflow guards and optional integer sanitizer profile.
-- Acceptance: TLV-style fixture with header length vs remaining data; output
-  buffer write-overrun fixture.
+- Done: explicit `OUTPUT_BUFFER`/`CAPACITY` allocation with exact `output_bytes`;
+  `c_output` fixture detects a write past the configured capacity.
+- Next: TLV/frame length contracts and integer-overflow hardening.
 
 ### 4. Sequence / stateful harness
 

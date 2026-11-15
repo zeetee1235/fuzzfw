@@ -1,0 +1,24 @@
+schema_version = 1
+
+[project]
+name = "c-output-fixture"
+source = "."
+compdb = "build/compile_commands.json"
+
+[ci]
+engine = "replay"
+time_seconds = 5
+jobs = 1
+corpus_dir = "corpus"
+
+[[targets]]
+name = "decode_output"
+symbol = "decode_output"
+source = "src/output.c"
+header = "include/output.h"
+required = true
+input = "bytes_length"
+max_input_bytes = 32
+output_bytes = 64
+args = ["FUZZ_BYTES", "LOGICAL_LENGTH", "OUTPUT_BUFFER", "CAPACITY"]
+seeds = ["seeds"]

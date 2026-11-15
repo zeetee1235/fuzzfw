@@ -186,6 +186,40 @@ against the AST. A raw-pointer factory without `destroy` is blocked. A
 non-static member factory, reference return, or mismatched class is blocked. If
 the factory cannot be proven, use the user wrapper path.
 
+## Output buffers and capacity
+
+Explicit output buffers are supported for parsers that write into caller-owned
+storage:
+
+```toml
+output_bytes = 64
+args = ["FUZZ_BYTES", "LOGICAL_LENGTH", "OUTPUT_BUFFER", "CAPACITY"]
+```
+
+The harness allocates a zeroed, exact-size output buffer, passes the configured
+capacity, frees it after the call, and lets ASan catch writes past the capacity.
+The generator does not guess output arguments automatically; this role requires
+an explicit `args` contract.
+
+## C context objects
+
+Context pointers are not raw zeroed memory. A target can declare an explicit
+context lifecycle:
+
+```toml
+[targets.context]
+kind = "opaque"
+size = 16
+init = "parser_context_init"
+reset = "parser_context_reset"
+arg = 0
+```
+
+The harness allocates the configured size, calls the declared init, passes the
+typed context pointer, calls reset/destroy if present, and frees it. Init/reset/
+destroy signatures and argument indices are checked against the AST. A context
+that cannot be proven is blocked or requires a wrapper.
+
 ## Event models (DMA / ISR / RTOS)
 
 Event boundaries are not simulated by an arbitrary scheduler. The target must

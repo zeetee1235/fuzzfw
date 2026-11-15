@@ -100,6 +100,7 @@ definitions, include paths, forced includes, and standards are preserved.
 | `required` | `false` | Required for `check`; at least one required target or `--target` is mandatory. |
 | `input` | auto | `bytes_length`, `manual_wrapper`, or `existing_harness`. |
 | `max_input_bytes` | harness default | Per-target cap; must not exceed the global cap (0 inherits). |
+| `output_bytes` | unset | Allocated output capacity for explicit `OUTPUT_BUFFER`/`CAPACITY` roles. |
 | `setup` | unset | Explicit setup function called before the target. Must be declared by the included header. |
 | `teardown` | unset | Explicit teardown function called after the target. |
 | `factory` | unset | Explicit C++ factory symbol for a member function target. Value, reference, raw pointer, `std::unique_ptr`, and `std::shared_ptr` returns are recognized. |
@@ -108,7 +109,7 @@ definitions, include paths, forced includes, and standards are preserved.
 | `wrapper_symbol` | unset | User wrapper entry symbol; must be set with `wrapper_source`. |
 | `wrapper_source` | unset | User wrapper source compiled into the host build. |
 | `seeds` | `[]` | Seed files or directories. |
-| `args` | unset | Explicit role list, one per parameter: `FUZZ_BYTES`, `FUZZ_BYTES_MUTABLE`, `LOGICAL_LENGTH`, `CAPACITY`, `OUTPUT_BUFFER`, `CONTEXT`, `CONFIG`, `UNKNOWN`. `CONTEXT`/`OUTPUT_BUFFER`/`CONFIG` still require a wrapper. |
+| `args` | unset | Explicit role list, one per parameter: `FUZZ_BYTES`, `FUZZ_BYTES_MUTABLE`, `LOGICAL_LENGTH`, `CAPACITY`, `OUTPUT_BUFFER`, `CONTEXT`, `CONFIG`, `UNKNOWN`. `OUTPUT_BUFFER` requires `output_bytes`; `CONTEXT` requires `targets.context`; `CONFIG` still requires a wrapper. |
 | `build_variant` | unset | Select an exact compilation-database variant. |
 
 For a C++ member function, use an explicit factory instead of raw memory:
@@ -138,6 +139,25 @@ void wrapper(const uint8_t *data, size_t size);
 
 If the target needs a writable buffer, the wrapper owns the copy. If a target
 needs a context or output buffer, a wrapper is the supported P0 escape hatch.
+
+### `[targets.context]`
+
+For C APIs that take a context pointer:
+
+```toml
+[targets.context]
+kind = "opaque"       # currently opaque
+size = 16             # exact allocation size in bytes
+init = "parser_context_init"
+reset = "parser_context_reset"
+destroy = "parser_context_destroy" # optional
+arg = 0               # context parameter index
+```
+
+`init` must be `int(void *)` or `void(void *)`; `reset` and `destroy` must be
+`void(void *)`. The harness allocates zeroed memory, calls init, passes the
+typed pointer to the target, calls reset/destroy, and frees it. No zeroed
+object is accepted without an explicit init.
 
 ## `[[adapters]]`
 

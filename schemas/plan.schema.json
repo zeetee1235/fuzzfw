@@ -38,7 +38,10 @@
               "kind": {"type": "string"},
               "buffer_arg": {"type": "integer"},
               "length_arg": {"type": "integer"},
-              "capacity_arg": {"type": "integer"}
+              "capacity_arg": {"type": "integer"},
+              "output_arg": {"type": "integer"},
+              "context_arg": {"type": "integer"},
+              "output_bytes": {"type": "integer"}
             }
           },
           "role_bindings": {"type": "array"},
@@ -47,6 +50,7 @@
           "platform": {"type": "object"},
           "analysis": {"type": "object"},
           "factory": {"type": "object"},
+          "context_object": {"type": "object"},
           "is_static_method": {"type": "boolean"},
           "events": {"type": "array"},
           "adapters": {"type": "array"},
@@ -54,6 +58,7 @@
           "reasons": {"type": "array", "items": {"type": "string"}},
           "diagnostics": {"type": "array"},
           "max_input_bytes": {"type": "integer", "minimum": 1},
+          "output_bytes": {"type": "integer", "minimum": 0},
           "seeds": {"type": "array", "items": {"type": "string"}},
           "wrapper": {"type": "object"}
         }

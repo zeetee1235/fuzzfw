@@ -109,6 +109,26 @@ func inferRoles(fn *analyzer.Function, fact *analyzer.IRFunctionFact, target con
 		return result
 	}
 
+	contextArg := -1
+	if target.Context != nil {
+		contextArg = target.Context.Arg
+		if contextArg == bestBuffer.index || contextArg == bestLength.index || contextArg < 0 || contextArg >= len(fn.Params) {
+			result.blocked = true
+			result.reasons = append(result.reasons, "context.arg does not identify a non-buffer pointer parameter")
+			result.diagnostics = append(result.diagnostics, diag.New(diag.EContextInvalid,
+				"target context.arg must identify a pointer parameter separate from the fuzz buffer and length",
+			).WithTarget(fn.Name))
+			return result
+		}
+		if !fn.Params[contextArg].IsPointer {
+			result.blocked = true
+			result.reasons = append(result.reasons, "context.arg is not a pointer parameter")
+			result.diagnostics = append(result.diagnostics, diag.New(diag.EContextInvalid,
+				"target context.arg must be a pointer").WithTarget(fn.Name))
+			return result
+		}
+		result.input.ContextArg = contextArg
+	}
 	bufferUses := irUses(fact, bestBuffer.index)
 	lengthUses := irUses(fact, bestLength.index)
 	bufferRole := RoleFuzzBytes
@@ -171,14 +191,25 @@ func inferRoles(fn *analyzer.Function, fact *analyzer.IRFunctionFact, target con
 	}
 	for _, candidate := range others {
 		role := RoleContext
-		if candidate.kind == "config" {
+		source := "unassigned"
+		evidence := []string{"non_buffer_argument"}
+		if candidate.kind == "config" && candidate.index != contextArg {
 			role = RoleConfig
 		}
+		if candidate.index == contextArg {
+			source = "explicit_context"
+			evidence = []string{"context_config", fmt.Sprintf("ast_param:%s", candidate.param.Type)}
+		} else {
+			result.ambiguous = true
+		}
 		result.roles = append(result.roles, RoleBinding{
-			Argument: candidate.index, Role: role, Source: "unassigned",
-			Type: candidate.param.Type, Evidence: []string{"non_buffer_argument"},
+			Argument: candidate.index, Role: role, Source: source,
+			Type: candidate.param.Type, Evidence: evidence,
 		})
-		result.ambiguous = true
+	}
+	if target.OutputBytes > 0 && target.Args == nil && bufferRole == RoleFuzzBytes {
+		// Output buffers are accepted only through an explicit role contract in
+		// this first implementation; guessing an output argument is unsafe.
 	}
 	if bufferRole == RoleOutputBuffer {
 		result.blocked = true
@@ -228,11 +259,21 @@ func explicitRoles(fn *analyzer.Function, fact *analyzer.IRFunctionFact, target 
 		case RoleCapacity:
 			result.input.CapacityArg = index
 		case RoleContext:
-			result.blocked = true
-			result.reasons = append(result.reasons, "explicit CONTEXT argument is unsupported in P0; provide a wrapper")
+			if target.Context == nil {
+				result.blocked = true
+				result.reasons = append(result.reasons, "explicit CONTEXT argument requires a targets.context object")
+			} else {
+				result.input.ContextArg = index
+				result.reasons = append(result.reasons, "context argument supplied by explicit targets.context")
+			}
 		case RoleOutputBuffer:
-			result.blocked = true
-			result.reasons = append(result.reasons, "explicit OUTPUT_BUFFER synthesis is P1; provide a wrapper")
+			if target.OutputBytes <= 0 {
+				result.blocked = true
+				result.reasons = append(result.reasons, "OUTPUT_BUFFER requires targets.output_bytes")
+			} else {
+				result.input.OutputArg = index
+				result.input.OutputBytes = target.OutputBytes
+			}
 		case RoleConfig:
 			result.blocked = true
 			result.reasons = append(result.reasons, "explicit CONFIG argument has no value source; provide a wrapper")
@@ -253,11 +294,19 @@ func explicitRoles(fn *analyzer.Function, fact *analyzer.IRFunctionFact, target 
 	lengthParam := fn.Params[result.input.LengthArg]
 	result.constraints = buildConstraints(fn, bufferParam, lengthParam, target.Args[result.input.BufferArg], result.input, maxInputBytes, true)
 	if result.input.CapacityArg >= 0 {
-		result.constraints = append(result.constraints, Constraint{
-			Expr: "capacity == size", Basis: "user_contract",
-			Evidence: []string{"target.args explicitly assigns CAPACITY; harness uses one size for both"},
-		})
-		result.reasons = append(result.reasons, "capacity is derived from the same input size by explicit user contract")
+		if result.input.OutputArg >= 0 {
+			result.constraints = append(result.constraints, Constraint{
+				Expr: fmt.Sprintf("capacity == %d", result.input.OutputBytes), Basis: "user_contract",
+				Evidence: []string{"target.args explicitly assigns CAPACITY for OUTPUT_BUFFER"},
+			})
+			result.reasons = append(result.reasons, "output capacity is the configured output_bytes")
+		} else {
+			result.constraints = append(result.constraints, Constraint{
+				Expr: "capacity == size", Basis: "user_contract",
+				Evidence: []string{"target.args explicitly assigns CAPACITY; harness uses one size for both"},
+			})
+			result.reasons = append(result.reasons, "capacity is derived from the same input size by explicit user contract")
+		}
 	}
 	if fact == nil {
 		result.reasons = append(result.reasons, "IR facts unavailable; user role contract is authoritative")
