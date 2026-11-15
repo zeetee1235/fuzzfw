@@ -58,6 +58,6 @@ analyzer-clean:
 clean:
 	rm -rf fuzzfw dist analyzer/build .fuzzfw fuzzfw-out fuzzfw-out-*
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
-	find examples tests/fixtures -type d -name .fuzzfw -prune -exec rm -rf {} +
-	find examples tests/fixtures -type d -name fuzzfw-out -prune -exec rm -rf {} +
-	find examples tests/fixtures -type d -name build -prune -exec rm -rf {} +
+	find examples tests/fixtures tests/pilots -type d -name .fuzzfw -prune -exec rm -rf {} +
+	find examples tests/fixtures tests/pilots -type d -name fuzzfw-out -prune -exec rm -rf {} +
+	find examples tests/fixtures tests/pilots -type d -name build -prune -exec rm -rf {} +
