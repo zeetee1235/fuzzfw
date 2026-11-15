@@ -181,11 +181,19 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 		if err != nil {
 			return exitcode.Incomplete, err
 		}
-		raw, replayed, replayDiags := replayCorpus(ctx, cfg, out, target, &built.Result)
-		casesReplayed += replayed
+		raw, quality, replayDiags := replayCorpus(ctx, cfg, out, target, &built.Result)
+		casesReplayed += quality.Inputs
 		allDiagnostics = append(allDiagnostics, replayDiags...)
+		if summary, ok := summaries[target.Name]; ok {
+			summary.CorpusInputs = quality.Inputs
+			summary.InputsWithData = quality.InputsWithData
+			summary.CorpusFrames = quality.Frames
+			summary.DistinctStates = len(quality.StateHashes)
+			summary.StateHashes = quality.StateHashes
+			summaries[target.Name] = summary
+		}
 		for _, selftestCase := range built.Result.Selftest.Cases {
-			if selftestCase.Crash && selftestCase.Origin == "target_crash" && selftestCase.InputPath != "" {
+			if selftestCase.Crash && (selftestCase.Origin == "target_crash" || selftestCase.Origin == "target_invariant") && selftestCase.InputPath != "" {
 				raw = append(raw, engine.RawFinding{
 					Path: absJoinPath(cfg.Root, selftestCase.InputPath), Kind: selftestCase.Sanitizer,
 					Target: target.Name, Engine: "selftest",
@@ -330,7 +338,8 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 
 func hasTargetCrash(findings []triage.Finding) bool {
 	for _, finding := range findings {
-		if finding.Origin == "target_crash" && finding.Reproduction.Level == "R1_HOST_REPRODUCED" && !finding.Reproduction.NonReproducing {
+		if (finding.Origin == "target_crash" || finding.Origin == "target_invariant") &&
+			finding.Reproduction.Level == "R1_HOST_REPRODUCED" && !finding.Reproduction.NonReproducing {
 			return true
 		}
 	}

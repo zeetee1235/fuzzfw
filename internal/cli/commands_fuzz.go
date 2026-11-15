@@ -127,11 +127,11 @@ func runFuzz(ctx context.Context, global globalOptions, args []string) (int, err
 		if err != nil {
 			return exitcode.Incomplete, err
 		}
-		raw, replayed, replayDiags := replayCorpus(ctx, cfg, out, target, &built.Result)
-		casesReplayed += replayed
+		raw, quality, replayDiags := replayCorpus(ctx, cfg, out, target, &built.Result)
+		casesReplayed += quality.Inputs
 		allDiagnostics = append(allDiagnostics, replayDiags...)
 		for _, selftestCase := range built.Result.Selftest.Cases {
-			if selftestCase.Crash && selftestCase.Origin == "target_crash" && selftestCase.InputPath != "" {
+			if selftestCase.Crash && (selftestCase.Origin == "target_crash" || selftestCase.Origin == "target_invariant") && selftestCase.InputPath != "" {
 				raw = append(raw, engine.RawFinding{
 					Path: absJoinPath(cfg.Root, selftestCase.InputPath), Kind: selftestCase.Sanitizer,
 					Target: target.Name, Engine: "selftest",
@@ -166,6 +166,11 @@ func runFuzz(ctx context.Context, global globalOptions, args []string) (int, err
 		allDiagnostics = append(allDiagnostics, triageDiags...)
 		allFindings = append(allFindings, findings...)
 		sum := summarizeTarget(target, &built.Result, findings)
+		sum.CorpusInputs = quality.Inputs
+		sum.InputsWithData = quality.InputsWithData
+		sum.CorpusFrames = quality.Frames
+		sum.DistinctStates = len(quality.StateHashes)
+		sum.StateHashes = quality.StateHashes
 		if built.Result.Status == "smoke_crashed" && hasTargetCrash(findings) {
 			if built.Result.FuzzBinary != "" {
 				sum.Status = "fuzzable"

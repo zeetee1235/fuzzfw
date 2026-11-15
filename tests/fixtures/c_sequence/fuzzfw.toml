@@ -9,6 +9,7 @@ compdb = "build/compile_commands.json"
 engine = "replay"
 time_seconds = 5
 jobs = 1
+corpus_dir = "corpus"
 
 [[targets]]
 name = "frame_value"

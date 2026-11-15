@@ -258,6 +258,22 @@ they do not invent transitions.
 `void(void)` or `void(context *)` and is called after the probe and events for
 each frame. The whole-input `context.reset` remains the teardown reset.
 
+### Corpus quality metrics
+
+Each `check`/`fuzz` run replays the prepared corpus and records per-target
+observation metrics:
+
+- `corpus_inputs`: files replayed;
+- `inputs_with_frames`: inputs that executed at least one target/frame call;
+- `corpus_frames`: maximum frames observed in one input;
+- `distinct_states` / `state_hashes`: distinct observed state hashes.
+
+A truncated frame yields zero frames and is not counted as a state. These
+metrics report reachability of the harness contract, not protocol validity:
+a frame is only "valid" in the sense that the length prefix was consumable and
+the target call ran. Command-level coverage still relies on the deterministic
+constant dictionary and is heuristic.
+
 ## C context objects
 
 Context pointers are not raw zeroed memory. A target can declare an explicit

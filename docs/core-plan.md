@@ -65,7 +65,9 @@ behavior.
   parameter stay unknown.
 - Return/output invariant oracle — complete in explicit hook form
   (`invariant_check = "symbol"`), with R1 triage and honggfuzz discovery.
-- Protocol-aware corpus quality metrics (valid frames, command/state coverage).
+- Protocol-aware corpus quality metrics — frame/state coverage recorded per
+  corpus input; command-level coverage remains heuristic through the
+  dictionary.
 - Grammar/state-aware mutation only after the deterministic harness work.
 - Optional MSan profile; integer/local-bounds profiles are implemented.
 

@@ -352,6 +352,18 @@ func TestLengthPrefixedSequencePasses(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("sequence check exit = %d\n%s", code, stderr)
 	}
+	summary := readSummary(t, filepath.Join(out, "summary.json"))
+	targetSummary := summary["targets"].([]any)[0].(map[string]any)
+	for key, want := range map[string]float64{
+		"corpus_inputs": 3, "inputs_with_frames": 2, "corpus_frames": 3, "distinct_states": 2,
+	} {
+		if got := targetSummary[key].(float64); got != want {
+			t.Fatalf("%s = %v, want %v", key, got, want)
+		}
+	}
+	if hashes := targetSummary["state_hashes"].([]any); len(hashes) != 2 {
+		t.Fatalf("state_hashes = %v", hashes)
+	}
 	buildInfo, err := os.ReadFile(filepath.Join(out, "build-info.json"))
 	if err != nil {
 		t.Fatal(err)

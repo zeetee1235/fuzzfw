@@ -86,7 +86,7 @@ func (b *Builder) runSelftest(target planner.TargetPlan, hp *harness.Plan, binar
 			if report.Frames > result.Frames {
 				result.Frames = report.Frames
 			}
-			if report.StateHash != "" {
+			if report.Frames > 0 && report.StateHash != "" {
 				result.StateHash = report.StateHash
 			}
 		}

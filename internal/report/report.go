@@ -82,6 +82,11 @@ type TargetSummary struct {
 	Stability      string            `json:"stability,omitempty"`
 	Dependencies   []string          `json:"required_translation_units,omitempty"`
 	Adapters       []AdapterSummary  `json:"adapters,omitempty"`
+	CorpusInputs   int               `json:"corpus_inputs,omitempty"`
+	InputsWithData int               `json:"inputs_with_frames,omitempty"`
+	CorpusFrames   uint64            `json:"corpus_frames,omitempty"`
+	DistinctStates int               `json:"distinct_states,omitempty"`
+	StateHashes    []string          `json:"state_hashes,omitempty"`
 	FindingIDs     []string          `json:"finding_ids,omitempty"`
 	Diagnostics    []diag.Diagnostic `json:"diagnostics,omitempty"`
 }

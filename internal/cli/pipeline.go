@@ -328,21 +328,31 @@ func corpusFiles(dir string) ([]string, error) {
 	return files, nil
 }
 
+type corpusQuality struct {
+	Inputs         int
+	InputsWithData int
+	Frames         uint64
+	StateHashes    []string
+}
+
 func replayCorpus(
 	ctx context.Context,
 	cfg *config.Config,
 	out *artifacts.Output,
 	target planner.TargetPlan,
 	build *hostbuild.Result,
-) ([]engine.RawFinding, int, []diag.Diagnostic) {
+) ([]engine.RawFinding, corpusQuality, []diag.Diagnostic) {
 	var raw []engine.RawFinding
 	var diagnostics []diag.Diagnostic
+	quality := corpusQuality{}
+	states := map[string]bool{}
 	dir := out.TargetCorpus(target.Name)
 	files, err := corpusFiles(dir)
 	if err != nil {
-		return raw, 0, []diag.Diagnostic{diag.Newf(diag.EArtifactInvalid,
+		return raw, quality, []diag.Diagnostic{diag.Newf(diag.EArtifactInvalid,
 			"cannot enumerate corpus for %s: %v", target.Name, err).WithTarget(target.Name)}
 	}
+	quality.Inputs = len(files)
 	for _, file := range files {
 		data, err := os.ReadFile(file)
 		if err != nil {
@@ -351,13 +361,28 @@ func replayCorpus(
 			continue
 		}
 		outcome := triage.RunOnce(ctx, cfg, build, data, target.Name, "", 20*time.Second)
+		if outcome.Report != nil {
+			if outcome.Report.Frames > 0 {
+				quality.InputsWithData++
+				if outcome.Report.StateHash != "" {
+					states[outcome.Report.StateHash] = true
+				}
+			}
+			if outcome.Report.Frames > quality.Frames {
+				quality.Frames = outcome.Report.Frames
+			}
+		}
 		if outcome.Crashed {
 			raw = append(raw, engine.RawFinding{
 				Path: file, Kind: outcome.Kind, Target: target.Name, Engine: "corpus",
 			})
 		}
 	}
-	return raw, len(files), diagnostics
+	for hash := range states {
+		quality.StateHashes = append(quality.StateHashes, hash)
+	}
+	sort.Strings(quality.StateHashes)
+	return raw, quality, diagnostics
 }
 
 func summarizeTarget(target planner.TargetPlan, build *hostbuild.Result, findings []triage.Finding) report.TargetSummary {
