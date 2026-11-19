@@ -1,111 +1,157 @@
 # fuzzfw
 
-**Deterministic source-level selective host-lifting for embedded C/C++ fuzzing.**
+Deterministic source-level host-lifting for embedded C/C++ fuzzing.
 
-`fuzzfw` analyzes the C/C++ code that actually compiles in an embedded project,
-replaces only explicitly approved hardware boundaries, links the original
-translation units into a Linux host target, verifies that the target function is
-really reached and consumes input, and turns reproduced crashes into replayable
-artifacts.
+`fuzzfw` analyzes the C/C++ that actually compiles, replaces only approved
+hardware boundaries, relinks the original translation units on Linux, verifies
+that the target is reached and consumes input, and turns reproduced crashes into
+replayable artifacts.
 
-> Status: **pre-alpha (M0/M1 foundation)**. The core flow works end-to-end on
-> Linux x86-64 with Clang. libFuzzer and honggfuzz have been exercised end-to-end.
+> Status: pre-alpha. Linux x86-64 with Clang. libFuzzer and honggfuzz are
+> supported; honggfuzz is optional.
 
 ## What it does
 
-```text
-C/C++ project + compile_commands.json + fuzzfw.toml
-                         │
-        ┌────────────────▼─────────────────┐
-        │ Go control plane                 │
-        │ build import · planner · harness │
-        │ host build · engine · triage     │
-        └───────┬──────────────┬───────────┘
-                │ JSON         │ argv (never a shell)
-        ┌───────▼──────┐  ┌────▼──────────────┐
-        │ C++ analyzers│  │ Clang host build   │
-        │ Clang AST    │  │ original TUs       │
-        │ LLVM IR      │  │ approved adapters  │
-        └──────────────┘  └────┬──────────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │ native fuzz target  │
-                    │ ASan/UBSan + engine │
-                    └──────────┬──────────┘
-                               │ artifacts
-                    ┌──────────▼──────────┐
-                    │ replay/triage/report│
-                    │ JSON · JUnit · MD   │
-                    └─────────────────────┘
-```
-
-Key behavior:
-
-- Original translation units are rebuilt and relinked, not copied or rewritten.
-- No automatic `return 0` / `NULL` HAL stubs.
-- Compile success is not treated as fuzzability.
-- Target reachability, input use, stability, and reproduction are separate gates.
-- Findings are `HOST_ONLY` unless separately confirmed on a device.
-- No cloud, telemetry, Python runtime, LLM, or network upload.
+- Rebuilds and relinks original translation units; does not rewrite firmware.
+- Requires approved adapters or wrappers instead of automatic `return 0` stubs.
+- Gates on compilation, entry reachability, input use, stability, and
+  reproduction instead of treating a successful build as fuzzable.
+- Reports `HOST_ONLY` findings unless separately confirmed on a device.
+- Produces JSON, JUnit, Markdown, replay scripts, and minimized inputs.
 
 ## Requirements
 
 - Linux x86-64
 - Go 1.23+
 - Clang/LLVM 17+ with ASan/UBSan
-- CMake and Ninja for CMake projects
+- CMake and Ninja
 - Optional: LLVM/Clang development headers for native analyzers
-- Optional: honggfuzz for the honggfuzz adapter
+- Optional: honggfuzz for the honggfuzz engine
 
-## Build
+## Install a release
+
+```sh
+tar xzf fuzzfw-0.0.1-linux-amd64.tar.gz
+cd fuzzfw-0.0.1-linux-amd64
+./fuzzfw doctor
+cd examples/simple-parser
+./run.sh
+```
+
+The archive contains the binary, documentation, and the zero-config example.
+No `fuzzfw.toml` is required for the example.
+
+## Verify everything
+
+The fastest way to check the project is the one-shot script. It installs
+dependencies with the native package manager (apt, dnf/yum, pacman, zypper, or
+apk), builds fuzzfw, and runs every example below with expected exit codes.
+
+```sh
+./scripts/quickstart.sh
+```
+
+Useful flags:
+
+```sh
+./scripts/quickstart.sh --no-install        # dependencies already installed
+./scripts/quickstart.sh --skip-integration  # skip the ~1 minute test suite
+./scripts/quickstart.sh --skip-analyzer     # use the Go fallback analyzer
+```
+
+The script prints a PASS/FAIL/SKIP table and keeps logs and outputs in
+`fuzzfw-out-readme/`. A successful run reports:
+
+| Case | Expected |
+|---|---|
+| build, version, doctor | exit 0 |
+| `c_clean` check | exit 0, no finding |
+| `c_parser` check | exit 1, one repo-reproduced finding |
+| `c_parser` replay | exit 1, 3/3 reproductions |
+| `c_parser` libFuzzer | exit 1, one finding |
+| zero-config example | exit 1, mutated crash |
+| `go test ./...` | exit 0 |
+| integration tests | exit 0 |
+| `make lint` | exit 0 |
+
+If `honggfuzz` is not installed the script skips that optional engine. The
+native analyzers are also optional; without them fuzzfw uses the Go
+AST-JSON/textual-IR fallback.
+
+## Manual quick start
 
 ```sh
 make build
 ./fuzzfw doctor
 
-# Optional native analyzers; the Go AST-JSON/textual-IR fallback remains.
+# Native analyzers (optional): clang-devel + llvm-devel required
 make analyzer
 ```
 
-## Quick start
+Zero-config example (no `fuzzfw.toml`, no manual build):
+
+```sh
+cd examples/simple-parser
+./run.sh
+# or: ../../fuzzfw check --time 30s
+```
+
+fuzzfw auto-configures CMake if needed, discovers ready targets, attaches
+`seeds/`, and starts libFuzzer. Expected: exit 1 with one mutated
+`address:heap-buffer-overflow` in `fuzzfw-out/findings/`.
+
+Clean fixture:
 
 ```sh
 cd tests/fixtures/c_clean
 cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake --build build
 ../../../fuzzfw check --engine replay --time 1s --output fuzzfw-out
+# exit 0
 ```
 
-A clean target exits `0`. The intentional bug fixture exits `1`:
+Intentional-bug fixture:
 
 ```sh
 cd ../c_parser
 cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake --build build
 ../../../fuzzfw check --engine replay --time 1s --output fuzzfw-out
-# fuzzfw-out/findings/<id>/input.bin, finding.json, sanitizer.log, replay.sh
+# exit 1
 ```
 
-For mutation, use `--engine libfuzzer` (tested) or `--engine honggfuzz` when the
-engine is installed.
+`fuzzfw-out/findings/<id>/` contains `input.bin`, `finding.json`,
+`sanitizer.log`, `replay.sh`, and `repro.json`.
+
+Replay a finding in a fresh process:
+
+```sh
+../../../fuzzfw replay --attempts 3 fuzzfw-out/findings/<id>
+```
+
+Run mutation instead of corpus replay:
+
+```sh
+../../../fuzzfw check --engine libfuzzer --time 10s --output fuzzfw-out
+# or: --engine honggfuzz when installed
+```
 
 ## Commands
 
 | Command | Purpose |
 |---|---|
 | `doctor` | Check Clang, sanitizers, analyzers, and engines. |
-| `scan` | Import compdb and analyze functions into `.fuzzfw/analysis.json`. |
+| `scan` | Import the compilation database and analyze functions. |
 | `plan` | Produce a deterministic host-lift plan with evidence. |
 | `build` | Generate a harness, compile original TUs, and self-test. |
 | `fuzz` | Run a built target in an external engine and triage findings. |
-| `check` | Self-contained CI gate: analyze, build, replay, fuzz, report. |
+| `check` | Analyze, build, replay, fuzz, and report in one gate. |
 | `replay` | Re-run one finding input in a fresh process. |
 | `report` | Re-render Markdown, JSON, or JUnit output. |
 | `inspect` | Show roles, constraints, adapters, and diagnostics. |
 
-Exit codes: `0` pass, `1` new host-reproduced target finding, `2`
-build/environment/self-test failure or incomplete required check, `3` invalid
-configuration or usage.
+Exit codes: `0` pass, `1` new host-reproduced finding, `2`
+build/environment/self-test failure, `3` invalid configuration or usage.
 
 ## Configuration
 
@@ -113,25 +159,28 @@ configuration or usage.
 schema_version = 1
 
 [project]
-name = "sensor-firmware"
 source = "."
 compdb = "build/compile_commands.json"
 
 [ci]
-engine = "honggfuzz"
-time_seconds = 600
+engine = "replay"
+time_seconds = 60
 jobs = 2
 
 [[targets]]
-name = "sensor_decode"
-symbol = "sensor_decode"
-source = "src/sensor.c"
-header = "include/sensor.h"
+name = "parse_packet"
+symbol = "parse_packet"
+source = "src/parser.c"
+header = "include/parser.h"
 input = "bytes_length"
 required = true
 max_input_bytes = 4096
 seeds = ["tests/fuzzfw/seeds"]
+```
 
+Hardware symbols need an approved adapter with a reviewed contract:
+
+```toml
 [[adapters]]
 original_symbol = "HAL_UART_Receive"
 replacement_source = "tests/fuzzfw/adapters/uart.c"
@@ -139,97 +188,22 @@ contract = "tests/fuzzfw/contracts/uart.json"
 ```
 
 See [configuration](docs/reference/configuration.md) and
-[harness synthesis](docs/harness-synthesis.md).
+[harness synthesis](docs/harness-synthesis.md) for all fields and gate rules.
 
-## Implemented
-
-- Go CLI, strict TOML, stable exit codes, JSON/JUnit/Markdown.
-- Compilation database import, build variants, source hashes, Git provenance.
-- Native Clang LibTooling AST analyzer and read-only LLVM IR fact extractor.
-- Go AST-JSON/textual-IR fallback with explicit reduced evidence.
-- Deterministic C/C++ harness generation for bytes+length APIs.
-- Original TU host build with ASan/UBSan, coverage, entry reachability,
-  input-use evidence, stability, corpus replay, and finding reproduction.
-- Adapter contracts and user wrapper escape hatch.
-- C context objects with explicit init/reset/destroy lifecycle.
-- Explicit output buffers with configured capacity and overrun detection.
-- Post-call return/output invariant hooks that become triaged
-  `target_invariant` findings.
-- Per-target corpus quality metrics for replayed inputs, executed frames,
-  distinct states/transitions, heuristic command coverage, and
-  coverage/state corpus deduplication.
-- Length-prefixed multi-frame sequences with configurable TLV framing,
-  bounded per-frame target calls, state probing, per-frame reset hooks, and
-  recorded state hashes.
-- Deterministic command/magic-constant dictionaries, enum/table extraction,
-  and optional synthesized command corpus seeds.
-- Conservative local-call interprocedural IR propagation through direct
-  parameters and simple local aliases.
-- Optional MSan/TSan and integer/implicit-conversion/local-bounds sanitizer
-  profiles; C and C++ MSan findings are triaged as `memory:*`.
-- Real-runtime pilot against the `jsmn` embedded JSON tokenizer.
-- C++ free functions/namespaces and member functions through explicit
-  factory/RAII paths (value, reference with external lifetime, raw pointer +
-  destroy, `unique_ptr`, `shared_ptr`).
-- libFuzzer and honggfuzz adapters end-to-end tested.
-- Existing libFuzzer harness reuse without generating a replacement entry.
-- Unit-test setup/teardown extraction around an existing target callsite.
-- Explicit C++ constructors with literal arguments and AST validation.
-- Zero-argument UART/network entry points through approved input-source
-  adapters (`adapter_stream`).
-- CMake File API `codemodel-v2` fallback for projects without a compilation
-  database.
-- Multi-target parallel build/check/fuzz scheduling (`ci.target_jobs`) with
-  deterministic output ordering.
-- Frame-aware libFuzzer custom mutation for length-prefixed/TLV targets.
-- IR loop-bound/data-dependence evidence and compare-constant facts.
-- Finding minimization and baseline bootstrap.
-- Persistent reset probe: identical input repeated in one process must produce
-  identical coverage; otherwise `E_STATE_LEAK`.
-- Approved DMA/ISR/RTOS event models with an adapter-visible input stream and
-  explicit before/after event hooks.
-- Native AA/MemorySSA evidence: pointer alias facts and memory-access counts,
-  plus loop-bound and compare-constant facts.
-- C++ reference-returning factories with explicit external-lifetime review.
-
-## Not yet
-
-- Automatic C++ object-graph synthesis; complex graphs must go through an
-  explicit factory, constructor literals, or wrapper.
-- Full RTOS scheduler emulation; only approved event adapters/hooks are supported.
-- Whole-program cross-translation-unit points-to analysis.
-- Full firmware image or hardware-in-the-loop execution; requires an external
-  emulator/HIL setup.
-- honggfuzz validation across a wider release matrix (operator script and
-  validated refs are documented in `docs/honggfuzz-matrix.md`).
-
-## Repository layout
+## Output
 
 ```text
-cmd/fuzzfw/              CLI entry point
-internal/                Go control plane
-analyzer/clang/          C++ LibTooling AST analyzer
-analyzer/llvm/           C++ read-only LLVM IR analyzer
-runtime/replay/          embedded C replay driver
-schemas/                 versioned JSON contracts
-docs/                    architecture and reference docs
-examples/simple-parser/  runnable demo
-tests/fixtures/          C/C++/HAL/wrapper/fallback fixtures
+fuzzfw-out/
+├── summary.json, junit.xml, summary.md, diagnostics.json
+├── build-info.json
+├── corpus/<target>/
+└── findings/<id>/
+    ├── input.bin
+    ├── finding.json
+    ├── sanitizer.log
+    ├── replay.sh
+    └── repro.json
 ```
-
-## Documentation
-
-- [Architecture](docs/architecture.md)
-- [Quick start](docs/guides/quickstart.md)
-- [Configuration](docs/reference/configuration.md)
-- [CLI](docs/reference/cli.md)
-- [Harness synthesis](docs/harness-synthesis.md)
-- [Compatibility](docs/compatibility.md)
-- [Security model](docs/security-model.md)
-- [Core parser/protocol plan](docs/core-plan.md)
-- [Firmware pilots](docs/pilots.md)
-- [Diagnostics](docs/reference/diagnostics.md)
-- [Schemas](docs/reference/schemas.md)
 
 ## Test
 
@@ -237,16 +211,22 @@ tests/fixtures/          C/C++/HAL/wrapper/fallback fixtures
 go test ./...
 go test -tags=integration ./tests/integration/...
 make lint
+```
 
-# Optional: requires honggfuzz/hfuzz-clang/hfuzz-clang++ in PATH
-# Includes an unseeded discovery test against tests/fixtures/c_vuln.
+The integration suite covers the clean, crash, HAL, wrapper, event-model,
+state-leak, C++, and fallback fixtures. honggfuzz discovery tests are opt-in:
+
+```sh
 go test -tags='integration honggfuzz' ./tests/integration/...
 ```
 
-The discovery test starts with benign seeds only and passes when honggfuzz
-produces a new reproducible `target_crash`; it is not based on a pre-seeded
-crash file.
+## Documentation
 
-## License
-
-Apache-2.0. See [LICENSE](LICENSE).
+- [Quick start](docs/guides/quickstart.md)
+- [CLI](docs/reference/cli.md)
+- [Configuration](docs/reference/configuration.md)
+- [Diagnostics](docs/reference/diagnostics.md)
+- [Schemas](docs/reference/schemas.md)
+- [Harness synthesis](docs/harness-synthesis.md)
+- [Architecture](docs/architecture.md)
+- [Compatibility](docs/compatibility.md)

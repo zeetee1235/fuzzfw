@@ -65,6 +65,7 @@ const (
 	WBuildDelta         = "W_BUILD_DELTA"
 	WConfigUnknownKey   = "W_CONFIG_UNKNOWN_KEY"
 	ITargetBlocked      = "I_TARGET_BLOCKED"
+	WAutoconfig         = "W_AUTOCONFIG"
 	InfoRecovery        = "I_BASELINE_BOOTSTRAPPED"
 	WARNativeAnalyzer   = "W_NATIVE_ANALYZER_FALLBACK"
 )

@@ -71,6 +71,7 @@ changing meaning requires a schema version bump.
 | `W_INPUT_SENSITIVITY_UNKNOWN` | Input consumption not directly observed. |
 | `I_BASELINE_BOOTSTRAPPED` | Baseline written by explicit bootstrap. |
 | `I_TARGET_BLOCKED` | Informational blocked target. |
+| `W_AUTOCONFIG` | No `fuzzfw.toml`: targets/engine were discovered automatically. |
 
 ## Evidence levels
 

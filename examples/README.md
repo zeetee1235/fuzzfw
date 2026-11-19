@@ -2,7 +2,7 @@
 
 | Example | Purpose |
 |---|---|
-| `simple-parser` | C11 parser with a clean function and an intentional heap-overflow fixture; demonstrates analyze → build → corpus finding → replay. |
+| `simple-parser` | Zero-config C11 parser; auto-builds, discovers targets, and finds an intentional heap overflow with libFuzzer. |
 
 The fixtures under `tests/fixtures/` are the deterministic test matrix:
 
@@ -17,7 +17,5 @@ The fixtures under `tests/fixtures/` are the deterministic test matrix:
 
 ```sh
 cd examples/simple-parser
-cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-cmake --build build
-../../fuzzfw check --engine replay --time 1s --output fuzzfw-out
+./run.sh
 ```

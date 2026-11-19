@@ -36,14 +36,15 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 		return exitcode.Usage, err
 	}
 	started := time.Now()
-	cfg, err := loadConfigOrError(global, ".", true)
+	cfg, err := loadConfigOrError(global, ".", false)
 	if err != nil {
 		return exitcode.Usage, err
 	}
+	autoConfig := isAutoConfig(cfg)
 	if *noMinimize {
 		cfg.File.Harness.Minimize = false
 	}
-	if len(selected) == 0 && len(cfg.RequiredTargets()) == 0 {
+	if len(selected) == 0 && len(cfg.RequiredTargets()) == 0 && !autoConfig {
 		return exitcode.Usage, diag.NewError(diag.ETargetRequiredNone,
 			"no required targets: set required=true on [[targets]] or pass --target")
 	}
@@ -60,6 +61,8 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 	engineName := cfg.File.CI.Engine
 	if *engineFlag != "" {
 		engineName = *engineFlag
+	} else if autoConfig {
+		engineName = selectAutoEngine(tools)
 	}
 	fuzzEngine, err := engine.New(engineName, cfg, tools)
 	if err != nil {
@@ -69,6 +72,17 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 	var allDiagnostics []diag.Diagnostic
 	if !engineOK {
 		allDiagnostics = append(allDiagnostics, diag.New(diag.EEngineUnavailable, engineMessage).WithTarget(""))
+	}
+	if autoConfig {
+		allDiagnostics = append(allDiagnostics, diag.Diagnostic{
+			Code: diag.WAutoconfig, Severity: diag.SeverityInfo,
+			Message: fmt.Sprintf("no fuzzfw.toml: using engine %s", engineName),
+		})
+		buildDiagnostics, err := autoPrepareBuild(ctx, cfg)
+		if err != nil {
+			return exitcode.Incomplete, err
+		}
+		allDiagnostics = append(allDiagnostics, buildDiagnostics...)
 	}
 
 	// check is self-contained: always re-analyze from the current source tree.
@@ -89,6 +103,9 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 	plan, err := planner.Build(cfg, analysis, analysisHash, selected)
 	if err != nil {
 		return exitcode.Incomplete, err
+	}
+	if autoConfig {
+		allDiagnostics = append(allDiagnostics, applyAutoTargets(cfg, plan, selected)...)
 	}
 	if err := writePlan(ws, plan); err != nil {
 		return exitcode.Incomplete, err
@@ -135,6 +152,9 @@ func runCheck(ctx context.Context, global globalOptions, args []string) (int, er
 	budget, err := parseDurations(*timeFlag, cfg.File.CI.TimeSeconds)
 	if err != nil {
 		return exitcode.Usage, err
+	}
+	if autoConfig && *timeFlag == "" && budget > 20*time.Second {
+		budget = 20 * time.Second
 	}
 	jobs := cfg.File.CI.Jobs
 	if *jobsFlag > 0 {

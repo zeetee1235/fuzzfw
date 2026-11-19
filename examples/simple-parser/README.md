@@ -1,15 +1,21 @@
 # Simple parser example
 
 This C11 library contains one clean function (`parse_header`) and one
-intentional heap-overflow fixture (`parse_packet`). It demonstrates the
-complete fuzzfw flow:
+intentional heap-overflow fixture (`parse_packet`).
+
+There is no `fuzzfw.toml`. A single command auto-configures CMake, discovers the
+ready targets, attaches `seeds/`, and starts libFuzzer mutation:
 
 ```sh
-cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-cmake --build build
-../../fuzzfw check --engine replay --output fuzzfw-out
+./run.sh
+# or:
+../../fuzzfw check --time 30s
 ```
 
-The crash seed is in `corpus/`, not the normal seed set, so the build gate
-passes and the corpus regression exposes the finding. With
-`ci.engine = "libfuzzer"` or `"honggfuzz"` the check also mutates inputs.
+The first run creates `build/compile_commands.json`. `parse_packet` is found by
+mutation: the crash input is not in `seeds/`. The expected result is exit 1 with
+one `address:heap-buffer-overflow` finding under `fuzzfw-out/findings/`.
+
+Use `corpus/` for regression replay after the initial discovery. To customize
+targets, engine, or timeouts, add a `fuzzfw.toml` as described in
+[configuration](../../docs/reference/configuration.md).

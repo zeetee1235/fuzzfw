@@ -49,6 +49,17 @@ as native LibTooling.
 
 ## 3. Prepare a project
 
+Zero-config path: if the project has a `CMakeLists.txt` but no
+`compile_commands.json` or `fuzzfw.toml`, `fuzzfw check` configures CMake,
+builds it, discovers ready targets, and starts mutation. Try:
+
+```sh
+cd examples/simple-parser
+./run.sh
+```
+
+For explicit control, configure the build and create `fuzzfw.toml`:
+
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 cmake --build build

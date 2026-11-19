@@ -6,7 +6,7 @@
 
 BINARY ?= fuzzfw
 GO ?= go
-VERSION ?= 0.1.0-dev
+VERSION ?= 0.0.1
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS = -s -w \
@@ -15,7 +15,7 @@ LDFLAGS = -s -w \
 	-X github.com/fuzzfw/fuzzfw/internal/version.BuildDate=$(DATE) \
 	-X github.com/fuzzfw/fuzzfw/internal/version.Builder=make
 
-.PHONY: all build test test-integration lint fmt vet analyzer analyzer-clean clean help
+.PHONY: all build test test-integration lint fmt vet analyzer analyzer-clean clean help dist
 
 all: build
 
@@ -27,6 +27,7 @@ help:
 	@echo "  lint              gofmt check + go vet"
 	@echo "  fmt               gofmt the tree"
 	@echo "  analyzer          Build native Clang/LLVM analyzers"
+	@echo "  dist              Build a Linux release archive (VERSION=)"
 	@echo "  clean             Remove generated artifacts"
 
 build:
@@ -51,6 +52,9 @@ vet:
 analyzer:
 	cmake -S analyzer -B analyzer/build -G Ninja -DCMAKE_BUILD_TYPE=Release
 	cmake --build analyzer/build
+
+dist:
+	./scripts/package-release.sh $(VERSION)
 
 analyzer-clean:
 	rm -rf analyzer/build

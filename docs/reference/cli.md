@@ -108,6 +108,13 @@ Self-contained CI gate:
 9. `summary.json`, `junit.xml`, `summary.md`, `diagnostics.json`;
 10. stable exit code.
 
+If no `fuzzfw.toml` exists, `check` enters zero-config mode: it configures and
+builds a CMake project when `compile_commands.json` is missing, treats all ready
+candidates as required, attaches `seeds/`, `tests/fuzzfw/seeds/`, or `corpus/`,
+and prefers libFuzzer, then honggfuzz, then replay. The default budget is 20
+seconds in this mode unless `--time` is given. A `W_AUTOCONFIG` diagnostic
+records every automatic decision.
+
 A required target that is blocked, not built, not reached, or not stable makes
 the check incomplete (exit 2). A new reproduced target finding exits 1. Harness
 or adapter failures exit 2 rather than being promoted to product findings.
