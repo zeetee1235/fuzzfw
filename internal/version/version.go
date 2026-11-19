@@ -9,7 +9,7 @@ import "fmt"
 // Version is the semantic version of fuzzfw. Release builds override it with
 // -ldflags "-X github.com/fuzzfw/fuzzfw/internal/version.Version=...".
 var (
-	Version   = "0.0.1"
+	Version   = "0.0.2"
 	Commit    = "unknown"
 	BuildDate = "unknown"
 	Builder   = "unknown"

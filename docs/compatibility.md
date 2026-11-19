@@ -4,10 +4,12 @@
 
 | Area | Supported now | Notes |
 |---|---|---|
-| Host OS | Linux x86-64 | Primary target. Other Linux architectures are not release-validated. |
-| Go | 1.23+ | Single static control-plane binary. |
-| Clang/LLVM | 17+ | AST JSON fallback and native analyzers target modern Clang. |
+| Host OS | Linux x86-64 | Primary target. The release binary is static. Other Linux architectures are not release-validated. |
+| Release binary | Ubuntu 22.04/24.04, Fedora 44, CentOS Stream 9, RHEL 8/9 (UBI) | Archive extracted and bundled example run with `clang cmake make`; Make or Ninja. |
+| Go | 1.23+ | Source builds only; not required for the release binary. |
+| Clang/LLVM | 17+ recommended | Ubuntu 22.04 Clang 14 verified for the bundled example; native analyzers target modern Clang. |
 | Sanitizers | ASan, UBSan, LSan, MSan, TSan, integer, implicit-conversion, local-bounds, pointer-overflow, object-size | Default `address,undefined` with `-fno-sanitize-recover=all`. MSan is validated for C (`c_msan`) and simple C++ (`cpp_msan`); complex C++ standard-library code may require an instrumented libc++. MSan cannot be combined with ASan/TSan. |
+| CMake + Make/Ninja | Yes | Zero-config uses Ninja when present, otherwise Make. |
 | CMake compdb | Yes | `compile_commands.json` with `arguments` or `command`. |
 | Make compdb | Yes, if a valid JSON compdb is produced | fuzzfw does not infer link commands from Makefiles. |
 | CMake File API | Yes | `codemodel-v2` fallback when `compile_commands.json` is absent. |
